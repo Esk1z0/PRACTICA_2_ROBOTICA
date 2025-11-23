@@ -1,0 +1,2 @@
+[console_scripts]
+pioneer_p3dx_node = coppelia_test_pkg.coppelia_test_node:main
