@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+    ros2:
+        build: .
+        image: mi_proyecto_ros2:latest
+        container_name: ros2_dev
+        stdin_open: true
+        tty: true
+        network_mode: host
+        volumes:
+            # Monta tu código en vivo (hot-reload)
+            - ./src:/ros2_ws/src:rw
+            # Persiste los builds (opcional, acelera rebuilds)
+            - ros2_build:/ros2_ws/build
+            - ros2_install:/ros2_ws/install
+            - ros2_log:/ros2_ws/log
+            # Permite GUI (X11)
+            - /tmp/.X11-unix:/tmp/.X11-unix:rw
+            - ./src:/ros2_ws/src:rw
+        environment:
+            - DISPLAY=${DISPLAY}
+            - ROS_DOMAIN_ID=0
+
+volumes:
+    ros2_build:
+    ros2_install:
+    ros2_log:
