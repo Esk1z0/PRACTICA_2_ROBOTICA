@@ -24,7 +24,7 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'pioneer_p3dx_node = coppelia_test_pkg.pioneer_p3dx_node:main',
+            'pioneer_p3dx_node = coppelia_test_pkg.coppelia_test_node:main',
         ],
     },
 )
