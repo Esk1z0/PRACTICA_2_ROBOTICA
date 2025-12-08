@@ -13,8 +13,8 @@ setup(
     ],
     install_requires=['setuptools'],
     zip_safe=True,
-    maintainer='root',
-    maintainer_email='root@todo.todo',
+    maintainer='rosuser',
+    maintainer_email='rosuser@todo.todo',
     description='TODO: Package description',
     license='TODO: License declaration',
     extras_require={
@@ -24,7 +24,7 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'pioneer_p3dx_node = coppelia_test_pkg.coppelia_test_node:main',
+            'pioneer_p3dx_node = coppelia_test_pkg.pioneer_p3dx_node:main',
         ],
     },
 )

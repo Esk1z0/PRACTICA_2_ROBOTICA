@@ -49,7 +49,7 @@ class PioneerP3dxNode(Node):
         detected_any = False
 
         for s in self._sensors:
-            detection_state, detected_point, _, _ = self._sim.readProximitySensor(s)
+            detection_state, _, detected_point, _, _ = self._sim.readProximitySensor(s)
 
             if detection_state:
                 distance = math.sqrt(
