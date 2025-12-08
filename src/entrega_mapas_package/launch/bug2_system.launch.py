@@ -1,3 +1,4 @@
+
 #!/usr/bin/env python3
 """
 Launch file para el sistema completo Bug2
@@ -66,12 +67,13 @@ def generate_launch_description():
         output='screen',
         parameters=[{
             'control_rate': control_rate,
-            'max_linear_speed': 1.5,
+            'max_linear_speed': 2.0,
             'max_angular_speed': 1.5,
-            'goal_tolerance': 0.8,
-            'm_line_tolerance': 0.3,
-            'obstacle_threshold': 0.4,
-            'wall_distance': 0.5
+            'goal_tolerance': 0.3,
+            'm_line_tolerance': 0.2,
+            'obstacle_threshold': 0.5,
+            'front_obstacle_threshold': 0.55,
+            'wall_distance': 0.6
         }],
         emulate_tty=True
     )

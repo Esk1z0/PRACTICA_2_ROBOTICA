@@ -30,14 +30,18 @@ class Bug2ControllerNode(Node):
     def __init__(self):
         super().__init__('bug2_controller_node')
         
-        # Parámetros configurables
+        # Parámetros configurables (ajustados según bug2smoke.py)
         self.declare_parameter('control_rate', 20.0)  # Hz
-        self.declare_parameter('max_linear_speed', 1.5)
-        self.declare_parameter('max_angular_speed', 1.5)
-        self.declare_parameter('goal_tolerance', 1.5)
-        self.declare_parameter('m_line_tolerance', 0.3)
-        self.declare_parameter('obstacle_threshold', 0.4)
-        self.declare_parameter('wall_distance', 0.5)
+        self.declare_parameter('max_linear_speed', 2.0)
+        self.declare_parameter('max_angular_speed', 1.0)
+        self.declare_parameter('goal_tolerance', 0.3)  
+        self.declare_parameter('m_line_tolerance', 0.2)  
+        self.declare_parameter('obstacle_threshold', 0.2)  
+        self.declare_parameter('front_obstacle_threshold', 0.2) 
+        self.declare_parameter('wall_distance', 0.2) 
+        self.declare_parameter('max_range', 5.0)
+        self.declare_parameter('wheel_separation', 0.4)
+
         
         # Obtener parámetros
         self.control_rate = self.get_parameter('control_rate').value
@@ -46,7 +50,11 @@ class Bug2ControllerNode(Node):
         self.goal_tolerance = self.get_parameter('goal_tolerance').value
         self.m_line_tolerance = self.get_parameter('m_line_tolerance').value
         self.obstacle_threshold = self.get_parameter('obstacle_threshold').value
+        self.front_obstacle_threshold = self.get_parameter('front_obstacle_threshold').value
         self.target_wall_distance = self.get_parameter('wall_distance').value
+        self.max_range = self.get_parameter('max_range').value
+        self.wheel_separation = self.get_parameter('wheel_separation').value
+
         
         # Estado del robot
         self.current_pose = None
@@ -177,33 +185,62 @@ class Bug2ControllerNode(Node):
     
     def motion_to_goal_behavior(self):
         """
-        Comportamiento Motion-to-Goal de Bug2
+        Comportamiento Motion-to-Goal de Bug2 (mejorado según bug2smoke.py)
         Retorna: (linear_velocity, angular_velocity)
         """
+        position = [self.current_pose.pose.position.x, self.current_pose.pose.position.y]
+        q = self.current_pose.pose.orientation
+        orientation = 2 * math.atan2(q.z, q.w)
+        
         # Calcular ángulo hacia la meta
         angle_to_goal = self.angle_to_goal()
         
-        # Verificar si el camino está libre
-        if self.is_path_clear(angle_to_goal):
-            # Moverse hacia la meta
-            forward_speed = self.max_linear_speed * 0.8
-            angular_speed = angle_to_goal * 1.5
-            
-            # Limitar velocidad angular
-            angular_speed = max(
-                -self.max_angular_speed,
-                min(self.max_angular_speed, angular_speed)
-            )
-            
-            return forward_speed, angular_speed
+        # Verificar obstáculos frontales con 6 sensores (como bug2smoke.py)
+        front_sensors = [2, 3, 4, 5, 6, 7]
+        min_front_distance = float('inf')
+        obstacle_detected = False
         
-        else:
-            # Obstáculo detectado - cambiar a wall following
+        for sensor_id in front_sensors:
+            if sensor_id in self.sonar_readings:
+                reading = self.sonar_readings[sensor_id]
+                if reading.range < self.max_range:  # Válido
+                    distance = reading.range
+                    min_front_distance = min(min_front_distance, distance)
+                    
+                    # Ángulo del sensor
+                    sensor_angle_deg = self.sensor_angles.get(sensor_id, 0)
+                    sensor_angle = math.radians(sensor_angle_deg)
+                    angle_diff = abs(sensor_angle)
+                    
+                    # Solo sensores mirando al frente (±50 grados)
+                    if angle_diff < math.pi/3.6:
+                        if distance < self.front_obstacle_threshold:
+                            obstacle_detected = True
+                            break
+        
+        # Si hay obstáculo, cambiar a wall following
+        if obstacle_detected or min_front_distance < self.front_obstacle_threshold:
             self.transition_to_wall_following()
             return self.wall_following_behavior()
+        
+        # Control de velocidad basado en distancia frontal
+        if min_front_distance < 0.8:
+            forward_speed = self.max_linear_speed * 0.5
+        else:
+            forward_speed = self.max_linear_speed * 0.8
+        
+        angular_speed = angle_to_goal * 1.5
+        
+        # Limitar velocidad angular
+        angular_speed = max(
+            -self.max_angular_speed,
+            min(self.max_angular_speed, angular_speed)
+        )
+        
+        return forward_speed, angular_speed
     
     def transition_to_wall_following(self):
-        """Transición a estado de seguimiento de pared"""
+        """Transición a estado de seguimiento de pared (mejorado según bug2smoke.py)"""
         self.current_state = self.WALL_FOLLOWING
         
         # Guardar hit point
@@ -213,13 +250,29 @@ class Bug2ControllerNode(Node):
         ]
         self.hit_distance_to_goal = self.distance_to_goal()
         
-        # Determinar lado de seguimiento
-        left_clear = self.get_clearance_in_direction('left')
-        right_clear = self.get_clearance_in_direction('right')
-        self.wall_following_side = 'left' if left_clear > right_clear else 'right'
+        # Determinar lado de seguimiento (algoritmo mejorado)
+        left_distances = []
+        right_distances = []
+        
+        for sensor_id, reading in self.sonar_readings.items():
+            if reading.range < self.max_range:  # Válido
+                angle = self.sensor_angles.get(sensor_id, 0)
+                if -90 <= angle < 0:
+                    left_distances.append(reading.range)
+                elif 0 < angle <= 90:
+                    right_distances.append(reading.range)
+        
+        avg_left = sum(left_distances) / len(left_distances) if left_distances else 0
+        avg_right = sum(right_distances) / len(right_distances) if right_distances else 0
+        
+        # Elegir el lado con MÁS espacio libre
+        self.wall_following_side = 'right' if avg_right > avg_left else 'left'
         
         self.get_logger().info(
             f'Bug2: Obstáculo detectado - Wall following ({self.wall_following_side})'
+        )
+        self.get_logger().info(
+            f'Espacios: Izq={avg_left:.2f}m, Der={avg_right:.2f}m'
         )
         self.get_logger().info(
             f'Hit point: ({self.hit_point[0]:.2f}, {self.hit_point[1]:.2f}), '
@@ -242,9 +295,9 @@ class Bug2ControllerNode(Node):
     
     def can_leave_wall_following(self):
         """
-        Verifica las condiciones Bug2 para dejar wall following
+        Verifica las condiciones Bug2 para dejar wall following (mejorado)
         1. Estar en la M-line
-        2. Estar más cerca de la meta que en el hit point
+        2. Estar más cerca de la meta que en el hit point (con margen)
         3. Camino directo a meta libre
         """
         if self.hit_point is None:
@@ -254,22 +307,42 @@ class Bug2ControllerNode(Node):
         if not self.is_on_m_line():
             return False
         
-        # Condición 2: Más cerca que en hit point
+        # Condición 2: Más cerca que en hit point (con margen de 0.1m)
         current_distance = self.distance_along_m_line_to_goal()
-        if current_distance >= self.hit_distance_to_goal:
+        if current_distance >= self.hit_distance_to_goal - 0.1:
             return False
         
-        # Condición 3: Camino libre
+        # Condición 3: Camino libre usando detección mejorada
+        position = [self.current_pose.pose.position.x, self.current_pose.pose.position.y]
+        q = self.current_pose.pose.orientation
+        orientation = 2 * math.atan2(q.z, q.w)
         angle_to_goal = self.angle_to_goal()
-        if not self.is_path_clear(angle_to_goal):
-            return False
+        
+        # Verificar sensores frontales
+        front_sensors = [2, 3, 4, 5, 6, 7]
+        for sensor_id in front_sensors:
+            if sensor_id in self.sonar_readings:
+                reading = self.sonar_readings[sensor_id]
+                if reading.range < self.max_range:
+                    sensor_angle_deg = self.sensor_angles.get(sensor_id, 0)
+                    sensor_angle = math.radians(sensor_angle_deg)
+                    angle_diff = abs(sensor_angle - angle_to_goal)
+                    
+                    if angle_diff > math.pi:
+                        angle_diff = 2 * math.pi - angle_diff
+                    
+                    # Si el sensor apunta hacia la meta
+                    if angle_diff < math.pi/6:  # ±30 grados
+                        if reading.range < self.obstacle_threshold:
+                            return False
         
         return True
     
     def wall_following_control(self):
         """
-        Control básico de seguimiento de pared
-        Retorna: (linear_velocity, angular_velocity)
+        Control de seguimiento de pared basado en bug2smoke.py:
+        - Primero calcula velocidades de rueda (left_speed, right_speed)
+        - Luego las convierte a (linear, angular) para /cmd_vel
         """
         # Seleccionar sensores según lado
         if self.wall_following_side == 'right':
@@ -282,40 +355,73 @@ class Bug2ControllerNode(Node):
         # Obtener distancias
         wall_distances = [
             self.sonar_readings[s].range 
-            for s in wall_sensors 
-            if s in self.sonar_readings and self.sonar_readings[s].range < 5.0
+            for s in wall_sensors
+            if s in self.sonar_readings and self.sonar_readings[s].range < self.max_range
         ]
         
         front_distances = [
             self.sonar_readings[s].range
             for s in front_sensors
-            if s in self.sonar_readings and self.sonar_readings[s].range < 5.0
+            if s in self.sonar_readings and self.sonar_readings[s].range < self.max_range
         ]
         
         avg_wall_dist = sum(wall_distances) / len(wall_distances) if wall_distances else 1.5
         min_front_dist = min(front_distances) if front_distances else 1.5
         
-        # Velocidad base
-        base_speed = 1.2
+        # Velocidad base (igual que bug2smoke)
+        base_speed = 1.3
         
-        # Obstáculo frontal - girar
-        if min_front_dist < self.obstacle_threshold:
-            angular_vel = 1.0 if self.wall_following_side == 'right' else -1.0
-            return 0.3, angular_vel
+        # --- Cálculo de velocidades de rueda, como en el script original ---
+        if min_front_dist < 0.5:
+            # Obstáculo frontal: giro fuerte
+            if self.wall_following_side == 'right':
+                # En bug2smoke: return -0.5, base_speed
+                left_speed = -0.5
+                right_speed = base_speed
+            else:
+                # En bug2smoke: return base_speed, -0.5
+                left_speed = base_speed
+                right_speed = -0.5
         
-        # Control lateral proporcional
-        error = avg_wall_dist - self.target_wall_distance
-        kp = 2.0  # Ganancia proporcional
+        elif avg_wall_dist < self.target_wall_distance - 0.15:
+            # Muy cerca de la pared: alejarse
+            if self.wall_following_side == 'right':
+                # return base_speed * 0.6, base_speed * 1.3
+                left_speed = base_speed * 0.6
+                right_speed = base_speed * 1.3
+            else:
+                # return base_speed * 1.3, base_speed * 0.6
+                left_speed = base_speed * 1.3
+                right_speed = base_speed * 0.6
         
-        if self.wall_following_side == 'right':
-            angular_vel = -kp * error  # Negativo para corregir hacia la derecha
+        elif avg_wall_dist > self.target_wall_distance + 0.15:
+            # Muy lejos de la pared: acercarse
+            if self.wall_following_side == 'right':
+                # return base_speed * 1.3, base_speed * 0.6
+                left_speed = base_speed * 1.3
+                right_speed = base_speed * 0.6
+            else:
+                # return base_speed * 0.6, base_speed * 1.3
+                left_speed = base_speed * 0.6
+                right_speed = base_speed * 1.3
+        
         else:
-            angular_vel = kp * error   # Positivo para corregir hacia la izquierda
+            # Distancia correcta: avanzar recto
+            left_speed = base_speed
+            right_speed = base_speed
         
-        # Limitar velocidad angular
-        angular_vel = max(-self.max_angular_speed, min(self.max_angular_speed, angular_vel))
+        # --- Conversión de velocidades de rueda a (linear, angular) ---
+        linear = 0.5 * (left_speed + right_speed)
+        angular = (right_speed - left_speed) / self.wheel_separation
         
-        return base_speed, angular_vel
+        # Limitar velocidad angular a max_angular_speed para evitar oscilaciones locas
+        if angular > self.max_angular_speed:
+            angular = self.max_angular_speed
+        elif angular < -self.max_angular_speed:
+            angular = -self.max_angular_speed
+        
+        return linear, angular
+
     
     # ========== FUNCIONES AUXILIARES ==========
     
@@ -403,52 +509,6 @@ class Bug2ControllerNode(Node):
         
         # Distancia del punto proyectado a la meta
         return math.sqrt((x2 - proj_x)**2 + (y2 - proj_y)**2)
-    
-    def is_path_clear(self, target_angle):
-        """Verifica si el camino en una dirección está libre"""
-        # Sensores frontales
-        front_sensors = [4, 5]
-        
-        for sensor_id in front_sensors:
-            if sensor_id in self.sonar_readings:
-                distance = self.sonar_readings[sensor_id].range
-                if distance < self.obstacle_threshold:
-                    return False
-        
-        # Verificar sensores en dirección del objetivo
-        for sensor_id, reading in self.sonar_readings.items():
-            if reading.range >= 5.0:  # Fuera de rango
-                continue
-            
-            sensor_angle_deg = self.sensor_angles.get(sensor_id, 0)
-            sensor_angle = math.radians(sensor_angle_deg)
-            
-            angle_diff = abs(sensor_angle - target_angle)
-            if angle_diff > math.pi:
-                angle_diff = 2 * math.pi - angle_diff
-            
-            # Si el sensor apunta hacia el objetivo (±45°)
-            if angle_diff < math.pi/4:
-                if reading.range < self.obstacle_threshold:
-                    return False
-        
-        return True
-    
-    def get_clearance_in_direction(self, direction):
-        """Calcula el espacio libre en una dirección (left/right)"""
-        if direction == 'left':
-            sensors = [1, 2, 3, 4]
-        else:
-            sensors = [5, 6, 7, 8]
-        
-        distances = []
-        for sensor_id in sensors:
-            if sensor_id in self.sonar_readings:
-                dist = self.sonar_readings[sensor_id].range
-                if dist < 5.0:
-                    distances.append(dist)
-        
-        return sum(distances) / len(distances) if distances else 0.0
     
     def publish_velocity(self, linear, angular):
         """Publica comando de velocidad"""
