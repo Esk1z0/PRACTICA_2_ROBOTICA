@@ -27,57 +27,53 @@ RUN python3 -m pip install --no-cache-dir --break-system-packages \
     coppeliasim-zmqremoteapi-client
 
 # ============================================
-# CREAR USUARIO NO-ROOT
+# CREAR USUARIO NO-ROOT ALINEADO CON EL HOST
 # ============================================
 ARG USER_UID=1000
 ARG USER_GID=1000
 ARG USERNAME=rosuser
 
-# Crear usuario manejando casos donde el grupo/usuario ya existe
 RUN set -e; \
-    # Verificar si el GID ya existe
+    # Si ya existe un grupo con ese GID, lo reutilizamos
     if getent group $USER_GID > /dev/null 2>&1; then \
         EXISTING_GROUP=$(getent group $USER_GID | cut -d: -f1); \
-        echo "Grupo $EXISTING_GROUP con GID $USER_GID ya existe, lo usaremos"; \
+        echo "Grupo $EXISTING_GROUP con GID $USER_GID ya existe, lo usamos"; \
     else \
         groupadd --gid $USER_GID $USERNAME; \
         EXISTING_GROUP=$USERNAME; \
     fi; \
-    # Crear usuario o modificar existente
-    if id -u $USER_UID > /dev/null 2>&1; then \
-        EXISTING_USER=$(id -un $USER_UID); \
-        echo "Usuario $EXISTING_USER con UID $USER_UID ya existe"; \
-        usermod -l $USERNAME -d /home/$USERNAME -m $EXISTING_USER 2>/dev/null || true; \
-        usermod -g $USER_GID $USERNAME 2>/dev/null || true; \
+    # Si ya existe usuario con ese UID, lo renombramos/ajustamos
+    if getent passwd $USER_UID > /dev/null 2>&1; then \
+        EXISTING_USER=$(getent passwd $USER_UID | cut -d: -f1); \
+        echo "Usuario $EXISTING_USER con UID $USER_UID ya existe, lo ajustamos"; \
+        usermod -l $USERNAME -d /home/$USERNAME -m $EXISTING_USER || true; \
+        usermod -g $USER_GID $USERNAME || true; \
     else \
         useradd --uid $USER_UID --gid $USER_GID -m -s /bin/bash $USERNAME; \
     fi; \
-    # Dar permisos sudo
     echo "$USERNAME ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/$USERNAME; \
-    chmod 0440 /etc/sudoers.d/$USERNAME; \
-    # Crear home directory si no existe
-    mkdir -p /home/$USERNAME; \
-    chown -R $USER_UID:$USER_GID /home/$USERNAME
+    chmod 0440 /etc/sudoers.d/$USERNAME
 
 # ============================================
 # WORKSPACE ROS2
 # ============================================
 WORKDIR /ros2_ws
-
-# Dar permisos al workspace
-RUN chown -R $USER_UID:$USER_GID /ros2_ws
+RUN mkdir -p /ros2_ws && chown -R $USER_UID:$USER_GID /ros2_ws
 
 # ============================================
-# CONFIGURAR ENTORNO PARA EL USUARIO
+# CAMBIAR A USUARIO NORMAL
 # ============================================
 USER $USERNAME
 
-# Configurar bashrc
+# ============================================
+# CONFIGURAR ENTORNO DE SHELL
+# ============================================
 RUN echo 'source /opt/ros/jazzy/setup.bash' >> /home/$USERNAME/.bashrc && \
     echo 'if [ -f /ros2_ws/install/setup.bash ]; then source /ros2_ws/install/setup.bash; fi' >> /home/$USERNAME/.bashrc && \
     echo 'cd /ros2_ws' >> /home/$USERNAME/.bashrc && \
-    echo 'alias fix-perms="sudo chown -R rosuser:rosuser /ros2_ws"' >> /home/$USERNAME/.bashrc && \
-    echo 'alias build="colcon build --symlink-install"' >> /home/$USERNAME/.bashrc && \
-    echo 'alias source-ws="source install/setup.bash"' >> /home/$USERNAME/.bashrc
+    # Alias para arreglar permisos de TODO el workspace con el usuario REAL
+    echo 'alias fix-perms="sudo chown -R $(id -un):$(id -gn) /ros2_ws"' >> /home/$USERNAME/.bashrc && \
+    echo 'alias build=\"colcon build --symlink-install\"' >> /home/$USERNAME/.bashrc && \
+    echo 'alias source-ws=\"source install/setup.bash\"' >> /home/$USERNAME/.bashrc
 
 CMD ["/bin/bash"]
