@@ -18,6 +18,7 @@ services:
     volumes:
       # Código fuente: bind mount
       - ./src:/ros2_ws/src
+      - ./maps:/ros2_ws/maps
 
       # Artefactos: volúmenes nombrados
       - ros2_build:/ros2_ws/build

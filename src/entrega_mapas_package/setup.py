@@ -49,6 +49,9 @@ setup(
 
             # ros2 run entrega_mapas_package goal_manager_node
             'goal_manager_node = entrega_mapas_package.goal_manager_node:main',
+
+            # ros2 run entrega_mapas_package occupancy_mapper_node
+            'occupancy_mapper_node = entrega_mapas_package.occupancy_mapper_node:main',
         ],
     },
 )

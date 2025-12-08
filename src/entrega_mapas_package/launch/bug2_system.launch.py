@@ -95,6 +95,24 @@ def generate_launch_description():
         emulate_tty=True
     )
     
+    # Nodo 4: Occupancy Mapper
+    occupancy_mapper = Node(
+        package='entrega_mapas_package',
+        executable='occupancy_mapper_node',
+        name='occupancy_mapper',
+        output='screen',
+        parameters=[{
+            'map_width': 10.0,
+            'map_height': 10.0,
+            'resolution': 0.05,
+            'origin_x': -5.0,
+            'origin_y': -5.0,
+            'save_interval': 30.0,
+            'output_dir': '/ros2_ws/maps'
+        }],
+        emulate_tty=True
+    )
+    
     return LaunchDescription([
         # Declarar argumentos
         declare_robot_name,
@@ -104,5 +122,6 @@ def generate_launch_description():
         # Lanzar nodos
         coppelia_interface,
         bug2_controller,
-        goal_manager
+        goal_manager,
+        occupancy_mapper
     ])
