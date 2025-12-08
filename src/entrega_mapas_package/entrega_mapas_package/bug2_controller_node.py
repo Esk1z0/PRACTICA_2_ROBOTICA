@@ -34,7 +34,7 @@ class Bug2ControllerNode(Node):
         self.declare_parameter('control_rate', 20.0)  # Hz
         self.declare_parameter('max_linear_speed', 1.5)
         self.declare_parameter('max_angular_speed', 1.5)
-        self.declare_parameter('goal_tolerance', 0.8)
+        self.declare_parameter('goal_tolerance', 1.5)
         self.declare_parameter('m_line_tolerance', 0.3)
         self.declare_parameter('obstacle_threshold', 0.4)
         self.declare_parameter('wall_distance', 0.5)

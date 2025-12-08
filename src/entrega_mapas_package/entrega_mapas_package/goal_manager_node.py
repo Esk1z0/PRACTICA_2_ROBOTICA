@@ -30,7 +30,7 @@ class GoalManagerNode(Node):
         super().__init__('goal_manager_node')
         
         # Parámetros configurables
-        self.declare_parameter('goal_tolerance', 0.8)
+        self.declare_parameter('goal_tolerance', 1.5)
         self.declare_parameter('min_goal_distance', 2.0)
         self.declare_parameter('map_min_x', -4.0)
         self.declare_parameter('map_max_x', 4.0)
@@ -116,14 +116,11 @@ class GoalManagerNode(Node):
             
             # Generar nueva meta si está en modo automático
             if self.auto_generate:
-                self.get_logger().info('Generando nueva meta en 2 segundos...')
-                # Pequeña pausa antes de nueva meta
-                self.create_timer(2.0, self.generate_new_goal_callback, oneshot=True)
+                self.get_logger().info('Generando nueva meta inmediatamente...')
+                # Generar directamente sin timer
+                self.goal_reached = False
+                self.generate_and_publish_goal()
     
-    def generate_new_goal_callback(self):
-        """Callback para generar nueva meta (usado con timer oneshot)"""
-        self.goal_reached = False
-        self.generate_and_publish_goal()
     
     def generate_and_publish_goal(self):
         """Genera una meta válida y la publica"""
