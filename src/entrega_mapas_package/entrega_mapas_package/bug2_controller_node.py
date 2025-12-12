@@ -184,60 +184,60 @@ class Bug2ControllerNode(Node):
         self.publish_velocity(linear_vel, angular_vel)
     
     def motion_to_goal_behavior(self):
-        """
-        Comportamiento Motion-to-Goal de Bug2 (mejorado según bug2smoke.py)
-        Retorna: (linear_velocity, angular_velocity)
-        """
-        position = [self.current_pose.pose.position.x, self.current_pose.pose.position.y]
         q = self.current_pose.pose.orientation
-        orientation = 2 * math.atan2(q.z, q.w)
-        
-        # Calcular ángulo hacia la meta
+        robot_yaw = self._yaw_from_quat(q)
         angle_to_goal = self.angle_to_goal()
-        
-        # Verificar obstáculos frontales con 6 sensores (como bug2smoke.py)
-        front_sensors = [2, 3, 4, 5, 6, 7]
-        min_front_distance = float('inf')
-        obstacle_detected = False
-        
-        for sensor_id in front_sensors:
-            if sensor_id in self.sonar_readings:
-                reading = self.sonar_readings[sensor_id]
-                if reading.range < self.max_range:  # Válido
-                    distance = reading.range
-                    min_front_distance = min(min_front_distance, distance)
-                    
-                    # Ángulo del sensor
-                    sensor_angle_deg = self.sensor_angles.get(sensor_id, 0)
-                    sensor_angle = math.radians(sensor_angle_deg)
-                    angle_diff = abs(sensor_angle)
-                    
-                    # Solo sensores mirando al frente (±50 grados)
-                    if angle_diff < math.pi/3.6:
-                        if distance < self.front_obstacle_threshold:
-                            obstacle_detected = True
-                            break
-        
-        # Si hay obstáculo, cambiar a wall following
-        if obstacle_detected or min_front_distance < self.front_obstacle_threshold:
+
+        # Grupos de sensores (ajusta si tu mapeo real difiere)
+        front_ids = [3, 4, 5, 6]       # cono frontal
+        left_ids  = [1, 2, 3, 4]       # lateral-izq + frontal-izq
+        right_ids = [5, 6, 7, 8]       # lateral-der + frontal-der
+
+        d_front = self._min_of(front_ids, default=float('inf'))
+        d_left  = self._min_of(left_ids,  default=float('inf'))
+        d_right = self._min_of(right_ids, default=float('inf'))
+
+        # 1) Condición Bug2 clásica: obstáculo frontal -> wall follow
+        if d_front < self.front_obstacle_threshold:
             self.transition_to_wall_following()
             return self.wall_following_behavior()
-        
-        # Control de velocidad basado en distancia frontal
-        if min_front_distance < 0.8:
-            forward_speed = self.max_linear_speed * 0.5
+
+        # 2) Control de velocidad lineal según clearance (incluye laterales)
+        #    - si vas "encajonado", baja el lineal para no rozar.
+        clearance = min(d_front, d_left, d_right)
+        # Rampa simple (tú defines números; estos funcionan bien como punto de partida)
+        if clearance < 0.35:
+            forward_speed = self.max_linear_speed * 0.25
+        elif clearance < 0.60:
+            forward_speed = self.max_linear_speed * 0.45
         else:
-            forward_speed = self.max_linear_speed * 0.8
-        
-        angular_speed = angle_to_goal * 1.5
-        
-        # Limitar velocidad angular
-        angular_speed = max(
-            -self.max_angular_speed,
-            min(self.max_angular_speed, angular_speed)
-        )
-        
+            forward_speed = self.max_linear_speed * 0.75
+
+        # 3) Componente de giro hacia la meta
+        k_goal = 1.5
+        angular_speed = k_goal * angle_to_goal
+
+        # 4) Componente reactivo lateral (repulsión)
+        #    Si un lado está muy cerca, gira para abrirte.
+        side_threshold = 0.30
+        k_avoid = 0.9
+
+        avoid = 0.0
+        if d_left < side_threshold:
+            # obstáculo a la izquierda -> gira a la derecha (angular negativo o positivo según convención)
+            # En ROS, angular.z > 0 suele ser giro CCW (izquierda). Ajustamos para girar a la derecha:
+            avoid -= k_avoid * (1.0/max(d_left, 1e-3) - 1.0/side_threshold)
+        if d_right < side_threshold:
+            # obstáculo a la derecha -> gira a la izquierda
+            avoid += k_avoid * (1.0/max(d_right, 1e-3) - 1.0/side_threshold)
+
+        angular_speed += avoid
+
+        # 5) Saturaciones
+        angular_speed = max(-self.max_angular_speed, min(self.max_angular_speed, angular_speed))
+
         return forward_speed, angular_speed
+
     
     def transition_to_wall_following(self):
         """Transición a estado de seguimiento de pared (mejorado según bug2smoke.py)"""
@@ -346,24 +346,19 @@ class Bug2ControllerNode(Node):
         """
         # Seleccionar sensores según lado
         if self.wall_following_side == 'right':
-            wall_sensors = [6, 7, 8]  # Sensores derechos
-            front_sensors = [4, 5]
+            wall_sensors = [6, 7, 8]
+            front_sensors = [4, 5, 6]   # añade esquina derecha
         else:
-            wall_sensors = [1, 2, 3]  # Sensores izquierdos
-            front_sensors = [4, 5]
+            wall_sensors = [1, 2, 3]
+            front_sensors = [3, 4, 5]   # añade esquina izquierda
         
         # Obtener distancias
-        wall_distances = [
-            self.sonar_readings[s].range 
-            for s in wall_sensors
-            if s in self.sonar_readings and self.sonar_readings[s].range < self.max_range
-        ]
-        
-        front_distances = [
-            self.sonar_readings[s].range
-            for s in front_sensors
-            if s in self.sonar_readings and self.sonar_readings[s].range < self.max_range
-        ]
+        wall_distances = [self._valid_range(s) for s in wall_sensors]
+        wall_distances = [d for d in wall_distances if d is not None]
+
+        front_distances = [self._valid_range(s) for s in front_sensors]
+        front_distances = [d for d in front_distances if d is not None]
+
         
         avg_wall_dist = sum(wall_distances) / len(wall_distances) if wall_distances else 1.5
         min_front_dist = min(front_distances) if front_distances else 1.5
@@ -521,6 +516,31 @@ class Bug2ControllerNode(Node):
         """Limpieza al cerrar"""
         self.get_logger().info('Deteniendo robot...')
         self.publish_velocity(0.0, 0.0)
+
+
+    def _yaw_from_quat(self, q):
+        # Fórmula estándar yaw de quaternion (robusta aunque x,y no sean 0)
+        # yaw = atan2(2*(w*z + x*y), 1 - 2*(y*y + z*z))
+        return math.atan2(2.0*(q.w*q.z + q.x*q.y), 1.0 - 2.0*(q.y*q.y + q.z*q.z))
+
+    def _valid_range(self, sensor_id):
+        """Devuelve distancia válida (float) o None."""
+        r = self.sonar_readings.get(sensor_id)
+        if r is None:
+            return None
+        # Validación por contrato del mensaje Range
+        if math.isfinite(r.range) and r.min_range <= r.range <= r.max_range:
+            return r.range
+        return None
+
+    def _min_of(self, sensor_ids, default=float('inf')):
+        vals = []
+        for sid in sensor_ids:
+            d = self._valid_range(sid)
+            if d is not None:
+                vals.append(d)
+        return min(vals) if vals else default
+
 
 
 def main(args=None):

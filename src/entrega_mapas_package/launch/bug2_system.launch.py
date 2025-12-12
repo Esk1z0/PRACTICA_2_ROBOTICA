@@ -78,25 +78,28 @@ def generate_launch_description():
         emulate_tty=True
     )
     
-    # Nodo 3: Gestor de metas
+    # Nodo3 control meta
     goal_manager = Node(
-        package='entrega_mapas_package',
-        executable='goal_manager_node',
-        name='goal_manager',
-        output='screen',
-        parameters=[{
-            'goal_tolerance': 0.8,
-            'min_goal_distance': 2.0,
-            'map_min_x': -4.0,
-            'map_max_x': 4.0,
-            'map_min_y': -4.0,
-            'map_max_y': 4.0,
-            'map_buffer': 1.5,
-            'auto_generate': auto_generate_goals
-        }],
-        emulate_tty=True
-    )
-    
+    package='entrega_mapas_package',
+    executable='goal_manager_node',
+    name='goal_manager',
+    output='screen',
+    parameters=[{
+        'goal_tolerance': 0.8,
+        'min_goal_distance': 2.0,
+        'map_min_x': -2.45,
+        'map_max_x': 2.45,
+        'map_min_y': -2.45,
+        'map_max_y': 2.45,
+        'map_buffer': 0.2,
+        'auto_generate': auto_generate_goals,
+        'goal_frame': 'world',
+        'check_rate_hz': 10.0,
+        'max_attempts': 200
+    }],
+    emulate_tty=True
+)
+
     # Nodo 4: Occupancy Mapper
     occupancy_mapper = Node(
         package='entrega_mapas_package',
