@@ -8,25 +8,21 @@ from launch.substitutions import LaunchConfiguration
 
 def generate_launch_description():
 
-    declare_robot_name = DeclareLaunchArgument(
-        'robot_name',
-        default_value='Pioneer_p3dx'
-    )
+    declare_robot_name = DeclareLaunchArgument('robot_name', default_value='Pioneer_p3dx')
+    declare_control_rate = DeclareLaunchArgument('control_rate', default_value='20.0')
+    declare_auto_goals = DeclareLaunchArgument('auto_generate_goals', default_value='true')
 
-    declare_control_rate = DeclareLaunchArgument(
-        'control_rate',
-        default_value='20.0'
-    )
-
-    declare_auto_goals = DeclareLaunchArgument(
-        'auto_generate_goals',
-        default_value='true'
-    )
-
+    # TF laser respecto a base_link
     declare_laser_x = DeclareLaunchArgument('laser_x', default_value='0.20')
     declare_laser_y = DeclareLaunchArgument('laser_y', default_value='0.00')
     declare_laser_z = DeclareLaunchArgument('laser_z', default_value='0.20')
     declare_laser_yaw = DeclareLaunchArgument('laser_yaw', default_value='0.0')
+
+    # slam_toolbox params
+    declare_slam_params = DeclareLaunchArgument(
+        'slam_params_file',
+        default_value='/ros2_ws/src/entrega_mapas_package/config/slam_toolbox_params.yaml'
+    )
 
     robot_name = LaunchConfiguration('robot_name')
     control_rate = LaunchConfiguration('control_rate')
@@ -36,6 +32,8 @@ def generate_launch_description():
     laser_y = LaunchConfiguration('laser_y')
     laser_z = LaunchConfiguration('laser_z')
     laser_yaw = LaunchConfiguration('laser_yaw')
+
+    slam_params_file = LaunchConfiguration('slam_params_file')
 
     coppelia_interface = Node(
         package='entrega_mapas_package',
@@ -49,6 +47,30 @@ def generate_launch_description():
             'scan_frame': 'laser'
         }],
         emulate_tty=True
+    )
+
+    laser_static_tf = Node(
+        package='tf2_ros',
+        executable='static_transform_publisher',
+        name='laser_static_tf',
+        output='screen',
+        arguments=[
+            laser_x, laser_y, laser_z,
+            '0.0', '0.0', laser_yaw,
+            'base_link', 'laser'
+        ]
+    )
+
+    # SLAM: publica /map y TF map->odom
+    slam_toolbox = Node(
+        package='slam_toolbox',
+        executable='async_slam_toolbox_node',
+        name='slam_toolbox',
+        output='screen',
+        parameters=[slam_params_file],
+        remappings=[
+            ('scan', '/scan'),
+        ]
     )
 
     bug2_controller = Node(
@@ -90,39 +112,16 @@ def generate_launch_description():
         emulate_tty=True
     )
 
-    laser_static_tf = Node(
-        package='tf2_ros',
-        executable='static_transform_publisher',
-        name='laser_static_tf',
-        output='screen',
-        arguments=[
-            laser_x, laser_y, laser_z,
-            '0.0', '0.0', laser_yaw,
-            'base_link', 'laser'
-        ]
-    )
-
-    # Si ya tienes un nodo que publique /map (OccupancyGrid), esto te lo guarda a disco:
-    # map_saver = Node(
-    #     package='nav2_map_server',
-    #     executable='map_saver_cli',
-    #     name='map_saver',
-    #     output='screen',
-    #     arguments=['-f', '/ros2_ws/maps/map']
-    # )
-
     return LaunchDescription([
         declare_robot_name,
         declare_control_rate,
         declare_auto_goals,
-        declare_laser_x,
-        declare_laser_y,
-        declare_laser_z,
-        declare_laser_yaw,
+        declare_laser_x, declare_laser_y, declare_laser_z, declare_laser_yaw,
+        declare_slam_params,
 
         coppelia_interface,
         laser_static_tf,
+        slam_toolbox,        # <- clave para /map y map->odom
         bug2_controller,
         goal_manager,
-        # map_saver,
     ])

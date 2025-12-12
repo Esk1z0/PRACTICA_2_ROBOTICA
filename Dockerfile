@@ -1,4 +1,4 @@
-FROM ros:jazzy-ros-base
+FROM osrf/ros:humble-desktop
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -18,12 +18,14 @@ RUN apt-get update && apt-get install -y \
     tree \
     vim \
     nano \
+    ros-humble-slam-toolbox \
+    ros-humble-nav2-map-server \
     && rm -rf /var/lib/apt/lists/*
 
 # ============================================
 # DEPENDENCIAS PYTHON (pip)
 # ============================================
-RUN python3 -m pip install --no-cache-dir --break-system-packages \
+RUN python3 -m pip install --no-cache-dir \
     coppeliasim-zmqremoteapi-client
 
 # ============================================
@@ -34,7 +36,6 @@ ARG USER_GID=1000
 ARG USERNAME=rosuser
 
 RUN set -e; \
-    # Si ya existe un grupo con ese GID, lo reutilizamos
     if getent group $USER_GID > /dev/null 2>&1; then \
         EXISTING_GROUP=$(getent group $USER_GID | cut -d: -f1); \
         echo "Grupo $EXISTING_GROUP con GID $USER_GID ya existe, lo usamos"; \
@@ -42,7 +43,6 @@ RUN set -e; \
         groupadd --gid $USER_GID $USERNAME; \
         EXISTING_GROUP=$USERNAME; \
     fi; \
-    # Si ya existe usuario con ese UID, lo renombramos/ajustamos
     if getent passwd $USER_UID > /dev/null 2>&1; then \
         EXISTING_USER=$(getent passwd $USER_UID | cut -d: -f1); \
         echo "Usuario $EXISTING_USER con UID $USER_UID ya existe, lo ajustamos"; \
@@ -68,12 +68,11 @@ USER $USERNAME
 # ============================================
 # CONFIGURAR ENTORNO DE SHELL
 # ============================================
-RUN echo 'source /opt/ros/jazzy/setup.bash' >> /home/$USERNAME/.bashrc && \
+RUN echo 'source /opt/ros/humble/setup.bash' >> /home/$USERNAME/.bashrc && \
     echo 'if [ -f /ros2_ws/install/setup.bash ]; then source /ros2_ws/install/setup.bash; fi' >> /home/$USERNAME/.bashrc && \
     echo 'cd /ros2_ws' >> /home/$USERNAME/.bashrc && \
-    # Alias para arreglar permisos de TODO el workspace con el usuario REAL
     echo 'alias fix-perms="sudo chown -R $(id -un):$(id -gn) /ros2_ws"' >> /home/$USERNAME/.bashrc && \
-    echo 'alias build=\"colcon build --symlink-install\"' >> /home/$USERNAME/.bashrc && \
-    echo 'alias source-ws=\"source install/setup.bash\"' >> /home/$USERNAME/.bashrc
+    echo 'alias build="colcon build --symlink-install"' >> /home/$USERNAME/.bashrc && \
+    echo 'alias source-ws="source install/setup.bash"' >> /home/$USERNAME/.bashrc
 
 CMD ["/bin/bash"]
