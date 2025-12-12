@@ -54,7 +54,9 @@ def generate_launch_description():
         parameters=[{
             'robot_name': robot_name,
             'update_rate': control_rate,
-            'max_speed': 2.0
+            'max_speed': 2.0,
+            'hokuyo_name': 'Hokuyo',
+            'scan_frame': 'laser'
         }],
         emulate_tty=True  # Para ver logs en color
     )
@@ -68,15 +70,18 @@ def generate_launch_description():
         parameters=[{
             'control_rate': control_rate,
             'max_linear_speed': 2.0,
-            'max_angular_speed': 1.5,
+            'max_angular_speed': 1.0,
             'goal_tolerance': 0.3,
             'm_line_tolerance': 0.2,
-            'obstacle_threshold': 0.5,
-            'front_obstacle_threshold': 0.55,
-            'wall_distance': 0.6
+            'obstacle_threshold': 0.2,
+            'front_obstacle_threshold': 0.2,
+            'wall_distance': 0.2
         }],
         emulate_tty=True
     )
+
+
+
     
     # Nodo3 control meta
     goal_manager = Node(

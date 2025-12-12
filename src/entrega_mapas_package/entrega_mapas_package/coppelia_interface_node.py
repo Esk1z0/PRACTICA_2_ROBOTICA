@@ -4,7 +4,7 @@ import math
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Twist, PoseStamped
-from sensor_msgs.msg import Range
+from sensor_msgs.msg import Range, LaserScan
 from std_msgs.msg import Header
 
 from coppeliasim_zmqremoteapi_client import RemoteAPIClient
@@ -18,22 +18,36 @@ class CoppeliaInterfaceNode(Node):
         self.declare_parameter('update_rate', 20.0)
         self.declare_parameter('max_speed', 2.0)
 
+        self.declare_parameter('scan_frame', 'laser')
+        self.declare_parameter('angle_min', -120.0 * math.pi / 180.0)
+        self.declare_parameter('angle_max', 120.0 * math.pi / 180.0)
+        self.declare_parameter('range_min', 0.05)
+        self.declare_parameter('range_max', 5.0)
+
         self.robot_name = self.get_parameter('robot_name').value
         self.update_rate = float(self.get_parameter('update_rate').value)
         self.max_speed = float(self.get_parameter('max_speed').value)
+
+        self.scan_frame = self.get_parameter('scan_frame').value
+        self.angle_min = float(self.get_parameter('angle_min').value)
+        self.angle_max = float(self.get_parameter('angle_max').value)
+        self.range_min = float(self.get_parameter('range_min').value)
+        self.range_max = float(self.get_parameter('range_max').value)
 
         self.client = None
         self.sim = None
         self.robot_handle = None
         self.left_motor = None
         self.right_motor = None
-        self.script_handle = None
+        self.robot_script = None
 
         self.pose_pub = self.create_publisher(PoseStamped, '/robot/pose', 10)
 
         self.sonar_pubs = {}
         for i in range(1, 17):
             self.sonar_pubs[i] = self.create_publisher(Range, f'/robot/sonar_{i}', 10)
+
+        self.scan_pub = self.create_publisher(LaserScan, '/scan', 10)
 
         self.create_subscription(Twist, '/cmd_vel', self.cmd_vel_callback, 10)
 
@@ -48,7 +62,7 @@ class CoppeliaInterfaceNode(Node):
             self.robot_handle = self.sim.getObject(f'/{self.robot_name}')
             self.left_motor = self.sim.getObject(f'/{self.robot_name}_leftMotor')
             self.right_motor = self.sim.getObject(f'/{self.robot_name}_rightMotor')
-            self.script_handle = self.sim.getScript(self.sim.scripttype_childscript, self.robot_handle)
+            self.robot_script = self.sim.getScript(self.sim.scripttype_childscript, self.robot_handle)
 
             self.get_logger().info('Conectado a CoppeliaSim')
             return True
@@ -63,6 +77,7 @@ class CoppeliaInterfaceNode(Node):
         try:
             self.publish_robot_pose()
             self.publish_sonar_readings()
+            self.publish_lidar_scan()
         except Exception as e:
             self.get_logger().warn(f'Update falló: {e}')
 
@@ -86,7 +101,7 @@ class CoppeliaInterfaceNode(Node):
         self.pose_pub.publish(msg)
 
     def publish_sonar_readings(self):
-        readings = self.sim.callScriptFunction('getAllSonars', self.script_handle)
+        readings = self.sim.callScriptFunction('getAllSonars', self.robot_script)
         now = self.get_clock().now().to_msg()
 
         for i, d in enumerate(readings, 1):
@@ -103,6 +118,30 @@ class CoppeliaInterfaceNode(Node):
             msg.range = float(d)
             self.sonar_pubs[i].publish(msg)
 
+    def publish_lidar_scan(self):
+        ranges = self.sim.callScriptFunction('getLaserScan', self.robot_script)
+        now = self.get_clock().now().to_msg()
+
+        n = len(ranges)
+        if n <= 1:
+            return
+
+        msg = LaserScan()
+        msg.header = Header()
+        msg.header.stamp = now
+        msg.header.frame_id = self.scan_frame
+
+        msg.angle_min = self.angle_min
+        msg.angle_max = self.angle_max
+        msg.angle_increment = (self.angle_max - self.angle_min) / float(n - 1)
+        msg.time_increment = 0.0
+        msg.scan_time = 1.0 / self.update_rate
+        msg.range_min = self.range_min
+        msg.range_max = self.range_max
+        msg.ranges = [float(x) for x in ranges]
+
+        self.scan_pub.publish(msg)
+
     def cmd_vel_callback(self, msg: Twist):
         if self.sim is None:
             return
@@ -110,11 +149,8 @@ class CoppeliaInterfaceNode(Node):
             v = float(msg.linear.x)
             w = float(msg.angular.z)
 
-            left = v - w
-            right = v + w
-
-            left = max(-self.max_speed, min(self.max_speed, left))
-            right = max(-self.max_speed, min(self.max_speed, right))
+            left = max(-self.max_speed, min(self.max_speed, v - w))
+            right = max(-self.max_speed, min(self.max_speed, v + w))
 
             self.sim.setJointTargetVelocity(self.left_motor, left)
             self.sim.setJointTargetVelocity(self.right_motor, right)
