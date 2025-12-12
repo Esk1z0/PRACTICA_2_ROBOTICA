@@ -1,9 +1,4 @@
-
 #!/usr/bin/env python3
-"""
-Launch file para el sistema completo Bug2
-Lanza todos los nodos necesarios
-"""
 
 from launch import LaunchDescription
 from launch_ros.actions import Node
@@ -12,42 +7,38 @@ from launch.substitutions import LaunchConfiguration
 
 
 def generate_launch_description():
-    """
-    Genera la descripción del launch
-    
-    Lanza 3 nodos:
-    1. coppelia_interface_node - Interfaz con CoppeliaSim
-    2. bug2_controller_node - Controlador Bug2
-    3. goal_manager_node - Gestor de metas
-    """
-    
-    # Argumentos del launch (pueden pasarse al ejecutar)
+
     declare_robot_name = DeclareLaunchArgument(
         'robot_name',
-        default_value='Pioneer_p3dx',
-        description='Nombre del robot en CoppeliaSim'
+        default_value='Pioneer_p3dx'
     )
-    
+
     declare_control_rate = DeclareLaunchArgument(
         'control_rate',
-        default_value='20.0',
-        description='Frecuencia de control en Hz'
+        default_value='20.0'
     )
-    
+
     declare_auto_goals = DeclareLaunchArgument(
         'auto_generate_goals',
-        default_value='true',
-        description='Generar metas automáticamente'
+        default_value='true'
     )
-    
-    # Configuraciones (valores de los argumentos)
+
+    declare_laser_x = DeclareLaunchArgument('laser_x', default_value='0.20')
+    declare_laser_y = DeclareLaunchArgument('laser_y', default_value='0.00')
+    declare_laser_z = DeclareLaunchArgument('laser_z', default_value='0.20')
+    declare_laser_yaw = DeclareLaunchArgument('laser_yaw', default_value='0.0')
+
     robot_name = LaunchConfiguration('robot_name')
     control_rate = LaunchConfiguration('control_rate')
     auto_generate_goals = LaunchConfiguration('auto_generate_goals')
-    
-    # Nodo 1: Interfaz con CoppeliaSim
+
+    laser_x = LaunchConfiguration('laser_x')
+    laser_y = LaunchConfiguration('laser_y')
+    laser_z = LaunchConfiguration('laser_z')
+    laser_yaw = LaunchConfiguration('laser_yaw')
+
     coppelia_interface = Node(
-        package='entrega_mapas_package',  # Cambia por el nombre de tu paquete
+        package='entrega_mapas_package',
         executable='coppelia_interface_node',
         name='coppelia_interface',
         output='screen',
@@ -55,13 +46,11 @@ def generate_launch_description():
             'robot_name': robot_name,
             'update_rate': control_rate,
             'max_speed': 2.0,
-            'hokuyo_name': 'Hokuyo',
             'scan_frame': 'laser'
         }],
-        emulate_tty=True  # Para ver logs en color
+        emulate_tty=True
     )
-    
-    # Nodo 2: Controlador Bug2
+
     bug2_controller = Node(
         package='entrega_mapas_package',
         executable='bug2_controller_node',
@@ -80,58 +69,60 @@ def generate_launch_description():
         emulate_tty=True
     )
 
-
-
-    
-    # Nodo3 control meta
     goal_manager = Node(
-    package='entrega_mapas_package',
-    executable='goal_manager_node',
-    name='goal_manager',
-    output='screen',
-    parameters=[{
-        'goal_tolerance': 0.8,
-        'min_goal_distance': 2.0,
-        'map_min_x': -2.45,
-        'map_max_x': 2.45,
-        'map_min_y': -2.45,
-        'map_max_y': 2.45,
-        'map_buffer': 0.2,
-        'auto_generate': auto_generate_goals,
-        'goal_frame': 'world',
-        'check_rate_hz': 10.0,
-        'max_attempts': 200
-    }],
-    emulate_tty=True
-)
-
-    # Nodo 4: Occupancy Mapper
-    occupancy_mapper = Node(
         package='entrega_mapas_package',
-        executable='occupancy_mapper_node',
-        name='occupancy_mapper',
+        executable='goal_manager_node',
+        name='goal_manager',
         output='screen',
         parameters=[{
-            'map_width': 10.0,
-            'map_height': 10.0,
-            'resolution': 0.05,
-            'origin_x': -5.0,
-            'origin_y': -5.0,
-            'save_interval': 30.0,
-            'output_dir': '/ros2_ws/maps'
+            'goal_tolerance': 0.8,
+            'min_goal_distance': 2.0,
+            'map_min_x': -2.45,
+            'map_max_x': 2.45,
+            'map_min_y': -2.45,
+            'map_max_y': 2.45,
+            'map_buffer': 0.2,
+            'auto_generate': auto_generate_goals,
+            'goal_frame': 'world',
+            'check_rate_hz': 10.0,
+            'max_attempts': 200
         }],
         emulate_tty=True
     )
-    
+
+    laser_static_tf = Node(
+        package='tf2_ros',
+        executable='static_transform_publisher',
+        name='laser_static_tf',
+        output='screen',
+        arguments=[
+            laser_x, laser_y, laser_z,
+            '0.0', '0.0', laser_yaw,
+            'base_link', 'laser'
+        ]
+    )
+
+    # Si ya tienes un nodo que publique /map (OccupancyGrid), esto te lo guarda a disco:
+    # map_saver = Node(
+    #     package='nav2_map_server',
+    #     executable='map_saver_cli',
+    #     name='map_saver',
+    #     output='screen',
+    #     arguments=['-f', '/ros2_ws/maps/map']
+    # )
+
     return LaunchDescription([
-        # Declarar argumentos
         declare_robot_name,
         declare_control_rate,
         declare_auto_goals,
-        
-        # Lanzar nodos
+        declare_laser_x,
+        declare_laser_y,
+        declare_laser_z,
+        declare_laser_yaw,
+
         coppelia_interface,
+        laser_static_tf,
         bug2_controller,
         goal_manager,
-        occupancy_mapper
+        # map_saver,
     ])
