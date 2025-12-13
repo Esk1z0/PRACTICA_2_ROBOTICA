@@ -80,8 +80,8 @@ def generate_launch_description():
         output='screen',
         parameters=[{
             'control_frequency': control_rate,       # antes control_rate
-            'max_linear_speed': 1.0,
-            'max_angular_speed': 8.0,
+            'max_linear_speed': 4.0,
+            'max_angular_speed': 15.0,
             'wheel_separation': 0.33,
 
 
@@ -94,7 +94,7 @@ def generate_launch_description():
 
             'angular_gain': 2.0,
             'forward_speed_ratio': 0.7,
-            'wall_follow_speed': 0.6,                # MUY importante (ver punto 2)
+            'wall_follow_speed': 1.0,                # MUY importante (ver punto 2)
             'debug_log_frequency': 200
         }],
         emulate_tty=True
@@ -111,7 +111,7 @@ def generate_launch_description():
         parameters=[{
             'goal_tolerance': 0.8,
             'min_goal_distance': 2.0,
-            'map_min_x': -2.45,
+            'map_min_x': -7.40,
             'map_max_x': 2.45,
             'map_min_y': -2.45,
             'map_max_y': 2.45,
