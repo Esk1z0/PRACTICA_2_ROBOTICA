@@ -69,9 +69,14 @@ class PioneerP3dxNode(Node):
                 if dist < min_dist_front:
                     min_dist_front = dist
 
+<<<<<<< HEAD
         # --- 2. LÓGICA DE MOVIMIENTO (EXPLORACIÓN) ---
         v_lin = 2.0  # Velocidad crucero alta
         v_ang = 0.0
+=======
+        for s in self._sensors:
+            detection_state, _, detected_point, _, _ = self._sim.readProximitySensor(s)
+>>>>>>> 9b58e0a7cee8acfbca1e80b698eef7e8ca2e239a
 
         # Si estamos girando por un obstáculo anterior, seguimos girando un poco más
         if self.turn_timer > 0:
