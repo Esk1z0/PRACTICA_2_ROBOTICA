@@ -75,21 +75,31 @@ def generate_launch_description():
 
     bug2_controller = Node(
         package='entrega_mapas_package',
-        executable='bug2_controller_node',
+        executable='bug2_controller_node',   # OJO: que este nombre exista en console_scripts
         name='bug2_controller',
+        output='screen',
         parameters=[{
-            'control_rate': 20.0,
+            'control_frequency': control_rate,       # antes control_rate
             'max_linear_speed': 1.0,
-            'max_angular_speed': 10.0,
-            'wheel_separation': 0.2,
-            'goal_tolerance': 0.8,
-            'm_line_tolerance': 0.3,
-            'obstacle_threshold': 0.7,
-            'front_obstacle_threshold': 1.0,
-            'wall_distance': 0.75,
-            'max_range': 5.0
+            'max_angular_speed': 8.0,
+            'wheel_separation': 0.33,
+
+
+            'goal_reached_tolerance': 0.8,           # antes goal_tolerance
+            'm_line_tolerance': 0.2,
+
+            'obstacle_threshold': 0.6,               # ajustable
+            'target_wall_distance': 0.75,            # antes wall_distance
+            'wall_distance_tolerance': 0.5,
+
+            'angular_gain': 2.0,
+            'forward_speed_ratio': 0.7,
+            'wall_follow_speed': 0.6,                # MUY importante (ver punto 2)
+            'debug_log_frequency': 200
         }],
+        emulate_tty=True
     )
+
 
 
 
