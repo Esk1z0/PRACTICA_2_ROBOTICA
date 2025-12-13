@@ -77,19 +77,21 @@ def generate_launch_description():
         package='entrega_mapas_package',
         executable='bug2_controller_node',
         name='bug2_controller',
-        output='screen',
         parameters=[{
-            'control_rate': control_rate,
-            'max_linear_speed': 2.0,
-            'max_angular_speed': 1.0,
-            'goal_tolerance': 0.3,
-            'm_line_tolerance': 0.2,
-            'obstacle_threshold': 0.2,
-            'front_obstacle_threshold': 0.2,
-            'wall_distance': 0.2
+            'control_rate': 20.0,
+            'max_linear_speed': 1.0,
+            'max_angular_speed': 10.0,
+            'wheel_separation': 0.2,
+            'goal_tolerance': 0.8,
+            'm_line_tolerance': 0.3,
+            'obstacle_threshold': 0.7,
+            'front_obstacle_threshold': 1.0,
+            'wall_distance': 0.75,
+            'max_range': 5.0
         }],
-        emulate_tty=True
     )
+
+
 
     goal_manager = Node(
         package='entrega_mapas_package',
