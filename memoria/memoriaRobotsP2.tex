@@ -1,0 +1,550 @@
+% A1_Sistema_basico_navegacion.tex
+% Plantilla LaTeX inicial para la práctica "A1. Sistema básico de navegación"
+% Compilar con: pdflatex (x2) + bibtex (si se usa bibliografía)
+
+\documentclass[11pt,a4paper]{article}
+
+% --- Paquetes y Configuración ---
+\usepackage[utf8]{inputenc}
+\usepackage[spanish]{babel} % Idioma español
+\usepackage[T1]{fontenc}
+\usepackage{geometry}
+\geometry{top=2.5cm, bottom=2.5cm, left=3cm, right=3cm}
+\usepackage{graphicx} % Para imágenes
+\usepackage{float}    % Para posicionar figuras
+\usepackage{hyperref} % Para enlaces y referencias
+\usepackage{listings} % Para código fuente
+\usepackage{xcolor}   % Para colores
+\usepackage{booktabs} % Para tablas profesionales
+\usepackage{parskip}  % Espaciado entre párrafos
+\usepackage{amsmath}
+\usepackage{tikz}
+\usetikzlibrary{shapes.geometric, arrows.meta, positioning, fit, backgrounds, calc, shadows, babel}
+
+% --- Configuración de colores para código ---
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+
+\lstdefinestyle{mystyle}{
+    backgroundcolor=\color{backcolour},   
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{magenta},
+    numberstyle=\tiny\color{codegray},
+    stringstyle=\color{codepurple},
+    basicstyle=\ttfamily\footnotesize,
+    breakatwhitespace=false,         
+    breaklines=true,                 
+    captionpos=b,                    
+    keepspaces=true,                 
+    numbers=left,                    
+    numbersep=5pt,                  
+    showspaces=false,                
+    showstringspaces=false,
+    showtabs=false,                  
+    tabsize=2
+}
+\lstset{style=mystyle}
+
+%% Encoding and language
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[spanish]{babel}
+\usepackage{microtype}
+
+%% Graphics and tables
+\usepackage{graphicx}
+\usepackage{caption}
+\usepackage{subcaption}
+
+%% Code listings
+\usepackage{listings}
+\lstset{
+  basicstyle=\ttfamily\small,
+  frame=single,
+  breaklines=true,
+  language=Python,
+  showstringspaces=false
+}
+
+%% Page layout
+\usepackage{setspace}
+\onehalfspacing
+
+%% Bibliography
+\usepackage{natbib}
+
+\begin{document}
+
+\begin{titlepage}
+  \centering
+  {\scshape\LARGE Universidad Politécnica de Madrid \par}
+  \vspace{2.5cm}
+  \includegraphics[width=0.28\textwidth]{img/logo_upm.png}\\[2cm]
+  {\Huge\bfseries Robots autónomos \par}
+  \vspace{1.5cm}
+  {\Large \textbf{Práctica A2:} Construcción de mapas \par}
+  \vfill
+  {\large \emph{Autores:} Juan Esteban Rincón Marín  \\ Arturo Soto Ruedas \\ Jesús Samuel García Carballo \par}
+  \vfill
+  {\large \today\par}
+\end{titlepage}
+
+\section{Introducción}
+
+El objetivo principal de esta práctica es el desarrollo de un sistema de control 
+para un robot móvil capaz de explorar un entorno desconocido y generar un mapa de 
+ocupación.
+
+Para lograr esto, hemos diseñado una arquitectura híbrida que desacopla la 
+simulación del control:
+\begin{enumerate}
+    \item \textbf{Simulación:} \textit{CoppeliaSim} para la física, el entorno y los sensores.
+    \item \textbf{Control y SLAM:} \textit{ROS 2 Humble} ejecutándose en un contenedor Docker, gestionando la lógica de navegación y el mapeo.
+\end{enumerate}
+
+El sistema implementa un algoritmo de navegación reactiva (\textbf{Bug2}), 
+extraído de la práctica anterior, para garantizar que el robot pueda explorar 
+el entorno sin quedar atrapado. 
+Por su parte, el paquete \texttt{slam\_toolbox} se encarga de construir el mapa de 
+ocupación en tiempo real utilizando los datos del LIDAR y la odometría del robot
+
+
+\section{Arquitectura del Sistema}
+
+El sistema se divide en dos bloques principales comunicados por (\textit{localhost}):
+\begin{itemize}
+    \item \textbf{CoppeliaSim (Local):} Ejecuta la escena, el modelo del robot y 
+    gestiona los sensores físicos (Sonares + Hokuyo LaserScan). 
+    Se mantiene en el host local para asegurar la estabilidad gráfica y facilitar 
+    la depuración visual.
+    \item \textbf{ROS 2 Humble (Docker):} Ejecuta la lógica ``inteligente'' del robot, 
+    incluyendo el nodo de interfaz con Coppelia, el controlador Bug2 y el sistema SLAM. 
+    Se encapsula en Docker para garantizar la reproducibilidad y aislar las 
+    dependencias del sistema host.
+\end{itemize}
+
+\subsection{Paquetes de ROS 2}
+Para el desarrollo de la práctica se han utilizado una serie de paquetes:
+
+\begin{description}
+    \item[slam\_toolbox:] Es el núcleo del sistema de mapeo. Se utiliza el nodo 
+    \texttt{async\_slam\_toolbox\_node}.
+    \begin{itemize}
+        \item Consume: \texttt{/scan} (LaserScan) y odometría.
+        \item Publica: \texttt{/map} (OccupancyGrid) y transformación 
+        \texttt{map $\to$ odom}.
+    \end{itemize}
+    
+    \item[nav2\_map\_server:] Utilizado exclusivamente para la persistencia del mapa. 
+    Mediante la herramienta \texttt{map\_saver\_cli} se generan los ficheros 
+    \texttt{.pgm} y \texttt{.yaml} requeridos.
+    
+    \item[tf2\_ros:] Gestiona el árbol de transformaciones, incluyendo un 
+    \texttt{static\_transform\_publisher} para definir la posición fija del láser 
+    respecto a la base del robot (\texttt{base\_link $\to$ laser}).
+    
+    \item[entrega\_mapas\_package:] Paquete propio desarrollado por el grupo que 
+    contiene los nodos de interfaz, control Bug2 y gestión de metas.
+\end{description}
+
+
+
+% -----------------------------------------------------------------------------
+\section{Diseño de nodos}
+
+La arquitectura del sistema se ha diseñado de forma modular, dividiendo la 
+responsabilidad en cuatro nodos especializados configurados mediante el script 
+\texttt{bug2\_system.launch.py}. 
+A continuación se detalla la lógica interna de cada uno:
+
+\subsection{Interfaz (\texttt{coppelia\_interface\_node})}
+Este nodo actúa como capa de abstracción de hardware, aislando la simulación 
+del resto del sistema ROS 2.
+
+\begin{itemize}
+    \item \textbf{Frecuencia de Actualización:} Se ha establecido un ciclo de 
+    control de \textbf{20 Hz}. Esta tasa se eligió como compromiso técnico: es 
+    suficiente para capturar la dinámica del robot Pioneer P3DX sin saturar el 
+    canal de comunicación ZMQ con el simulador.
+    \item \textbf{Odometría (Ground Truth):} El nodo extrae la posición absoluta 
+    del simulador para calcular una odometría libre de deriva ($\Delta x / \Delta t$), 
+    proporcionando una localización perfecta para el mapeo.
+    \item \textbf{Calibración Extrínseca:} Mediante \texttt{tf2\_ros}, se publica 
+    una transformación estática del láser a $(0.2, 0.0, 0.2)\,m$ respecto a la base, 
+    correspondiente a la ubicación física del sensor Hokuyo.
+\end{itemize}
+
+\subsection{Mapeo y localización (\texttt{slam\_toolbox})}
+Para la construcción del mapa de ocupación se utiliza el paquete estándar 
+\texttt{slam\_toolbox} en modo asíncrono (\texttt{async\_slam\_toolbox\_node}).
+
+\begin{itemize}
+    \item \textbf{Técnica SLAM:} Implementa \textit{Pose Graph SLAM} (optimización 
+    de grafos) con \textit{Scan Matching}. 
+    Esto permite corregir pequeños errores de localización alineando las lecturas 
+    actuales del láser con el mapa construido hasta el momento.
+    \item \textbf{Modo Asíncrono:} Se ha seleccionado este modo para desacoplar el 
+    procesamiento del mapa del bucle de odometría, asegurando que el robot nunca 
+    pierda su localización local (\texttt{odom} $\to$ \texttt{base\_link}) incluso 
+    si la optimización global del mapa consume mucha CPU.
+\end{itemize}
+
+\subsection{Control de navegación (\texttt{bug2\_controller\_node})}
+El núcleo de navegación implementa una Máquina de Estados Finitos (FSM) basada en el 
+algoritmo Bug2, ajustada experimentalmente para garantizar la seguridad.
+
+\subsubsection{Estados y Parámetros Dinámicos}
+\begin{enumerate}
+    \item \textbf{MOTION\_TO\_GOAL:} El robot avanza hacia la meta con un control 
+    proporcional.
+    \begin{itemize}
+        \item \textit{Velocidad:} Se permite una velocidad lineal máxima de 
+        \textbf{4.0 m/s} en tramos rectos para agilizar la exploración.
+        \item \textit{Transición:} Si se detecta un obstáculo a $d < 0.6\,m$, 
+        se activa el modo de evasión.
+    \end{itemize}
+    
+    \item \textbf{WALL\_FOLLOWING:} El robot bordea el obstáculo. Para este estado 
+    crítico, se han aplicado restricciones conservadoras en el \textit{launch file}:
+    \begin{itemize}
+        \item \textbf{Velocidad Reducida:} Se limita a \textbf{1.0 m/s} para dar 
+        tiempo de reacción a los sonares en las esquinas.
+        \item \textbf{Distancia de Referencia:} Se fija en \textbf{0.75 m}. 
+        Este valor, superior al umbral de colisión, compensa el ruido de los 
+        ultrasonidos y evita roces laterales.
+    \end{itemize}
+\end{enumerate}
+
+\subsubsection{Criterio de salida}
+El robot abandona el muro solo si cumple la condición lógica:
+\begin{equation}
+    \text{Salida} = (\text{En M-Line}) \land (\text{Progreso Real}) \land 
+    (\text{Camino Libre})
+\end{equation}
+
+Donde:
+\begin{itemize}
+    \item \textbf{En M-Line:} Debe estar en la M-Line, definida como la línea recta
+    entre la posición inicial y la meta.
+    \item \textbf{Progreso Real:} La distancia actual a la meta es estrictamente 
+    menor que el \textit{hit\_point}.
+    \item \textbf{Camino Libre:} El camino directo a la meta debe estar libre.
+\end{itemize}
+
+
+\subsection{Gestión de metas (\texttt{goal\_manager\_node})}
+Para automatizar la exploración, este nodo genera metas aleatorias dentro de las 
+coordenadas operativas ($X \in [-7.4, 2.45]$, $Y \in [-2.45, 2.45]$).
+
+\begin{itemize}
+    \item \textbf{Buffer de seguridad:} Se aplica un margen de \textbf{0.2 m} 
+    respecto a los bordes del mapa. Esto evita generar metas inalcanzables pegadas 
+    a los muros exteriores.
+    \item \textbf{Robustez (QoS):} Las metas se publican con política 
+    \textit{Transient Local}, asegurando que el controlador reciba la última misión 
+    válida inmediatamente tras cualquier reinicio de la red.
+\end{itemize}
+
+\section{Arquitectura de comunicaciones}
+
+Para visualizar el flujo de datos entre los distintos módulos Python y los 
+paquetes externos, se presenta el siguiente diagrama de grafo de tópicos. 
+
+\begin{figure}[H]
+    \centering
+    \shorthandoff{<>} 
+    
+    % Ajuste de escala al 95%
+    \resizebox{0.95\textwidth}{!}{%
+    
+    \begin{tikzpicture}[
+        font=\sffamily\small,
+        node distance=1.5cm and 2.5cm,
+        % --- ESTILOS ---
+        rosnode/.style={
+            rectangle, 
+            draw=blue!60!black, 
+            fill=blue!5, 
+            thick, 
+            minimum width=3cm, 
+            minimum height=1.2cm, 
+            rounded corners=3pt, 
+            align=center,
+            drop shadow
+        },
+        simnode/.style={
+            rectangle, 
+            draw=red!60!black, 
+            fill=red!5, 
+            thick, 
+            minimum width=2.5cm, 
+            minimum height=5.5cm, 
+            rounded corners=3pt, 
+            align=center,
+            drop shadow
+        },
+        extnode/.style={ 
+            rectangle, 
+            draw=gray!70!black, 
+            fill=gray!10, 
+            thick, 
+            minimum width=2.5cm, 
+            minimum height=1.2cm, 
+            rounded corners=2pt, 
+            align=center,
+            drop shadow
+        },
+        topic/.style={
+            rectangle, 
+            draw=green!60!black, 
+            fill=green!10, 
+            rounded corners=2pt, 
+            font=\tiny\ttfamily,
+            inner sep=2pt,
+            align=center,
+            midway
+        },
+        line/.style={
+            draw, 
+            -Latex, 
+            thick, 
+            gray!80!black,
+            rounded corners=5pt
+        }
+    ]
+
+    % --- UBICACIÓN DE NODOS ---
+    
+    % 1. Simulador (Izquierda)
+    \node[simnode] (coppelia) {\textbf{CoppeliaSim}\\(Simulador)};
+
+    % 2. Interfaz (Centro)
+    \node[rosnode, right=2cm of coppelia] (interface) {\textbf{coppelia\_}\\ \textbf{interface}};
+
+    % 3. Columna Derecha (Lógica)
+    % Bug2 (Arriba-Derecha)
+    \node[rosnode, above right=0.2cm and 3.5cm of interface] (bug2) {\textbf{bug2\_}\\ \textbf{controller}};
+    
+    % SLAM (Abajo-Derecha)
+    \node[rosnode, below right=0.2cm and 3.5cm of interface] (slam) {\textbf{slam\_}\\ \textbf{toolbox}};
+    
+    % Goal Manager (Encima de Bug2)
+    \node[rosnode, above=1.5cm of bug2] (goal) {\textbf{goal\_}\\ \textbf{manager}};
+
+    % Herramientas (Derecha de SLAM)
+    \node[extnode, right=1.5cm of slam] (tools) {\textbf{Tools}\\(Rviz)};
+
+
+    % --- CONEXIONES ---
+
+    % A. ZMQ
+    \draw[line, <->, ultra thick, blue!80!black] (coppelia) -- node[above, font=\tiny, color=blue!80!black] {ZMQ API} (interface);
+
+    % B. SENSORES
+    
+    % 1. SCAN -> SLAM (Sale por abajo)
+    \draw[line] (interface.south east) -- ++(1.0, 0) |- node[topic, pos=0.7, above] {/scan} (slam.west);
+
+    % 2. SONAR -> BUG2 (Sale por el centro-arriba)
+    % Offset positivo en Y para salir "por arriba" de la pose
+    \draw[line] ([yshift=3mm]interface.east) -- ++(1.5, 0) |- node[topic, pos=0.7, above, sloped] {/sonar\_*} ([yshift=3mm]bug2.west);
+
+    % 3. POSE -> BUG2 (RESTAURADA A LÍNEA INDEPENDIENTE)
+    % Offset negativo en Y para salir "por debajo" del sonar
+    \draw[line] ([yshift=-3mm]interface.east) -- ++(1.0, 0) |- node[topic, pos=0.7, below, sloped] {/pose} ([yshift=-3mm]bug2.west);
+
+    % 4. POSE -> GOAL MANAGER (HORIZONTAL PERFECTA)
+    % Sube desde el norte, gira 90 grados y entra recta
+    \draw[line] (interface.north) -- (interface.north |- goal.west) -- node[topic, pos=0.5, above] {/pose} (goal.west);
+
+
+    % C. CONTROL (FLUJO ROJO - BUCLE EXTERNO)
+    \draw[line, red!80!black] (bug2.east) -- ++(0.5, 0) |- ++(0, -4.5) -| node[topic, pos=0.2, above] {/cmd\_vel} (interface.south);
+
+
+    % D. ESTRATEGIA
+    \draw[line] (goal) -- node[topic, midway, right] {/goal} (bug2);
+
+
+    % E. SALIDA MAPA
+    \draw[line, ultra thick] (slam.east) -- node[topic, midway, above] {/map} (tools.west);
+
+
+    % --- FONDO AGRUPADOR ---
+    \begin{scope}[on background layer]
+        \node[fit=(interface)(bug2)(slam)(goal)(tools), 
+              draw=gray!60, dashed, fill=gray!5, 
+              rounded corners, inner sep=15pt, 
+              % ETIQUETA ABAJO A LA DERECHA Y DESPLAZADA HACIA ABAJO
+              label={[anchor=south east, font=\sffamily\bfseries, xshift=0pt, yshift=-15pt]south east:Entorno ROS 2 (Docker)}] (ros_bg) {};
+    \end{scope}
+
+    \end{tikzpicture}
+    }
+    \caption{Grafo de comunicaciones del sistema. Se observa el flujo de datos desde la simulación (izquierda) y el lazo de control externo (línea roja).}
+    \label{fig:ros_graph_final}
+\end{figure}
+
+\section{Diseño del entorno de simulación}
+
+Para la validación experimental del sistema, se ha trabajado sobre el entorno de 
+simulación propuesto en el enunciado de la práctica. 
+A continuación se detallan las características del escenario y las modificaciones 
+realizadas para garantizar la fidelidad sensorial.
+
+\subsection{Recreación del entorno}
+Hemos recreado en coppeliaSim la escena \texttt{mapa\_practica2.ttt}, la cual replica 
+un entorno con las siguientes características:
+\begin{itemize}
+    \item \textbf{Estructura:} Un recinto cerrado de 10 x 20 compuesto por múltiples 
+    estancias conectadas mediante pasillos y puertas.
+    \item \textbf{Obstáculos:} Se incluyen columnas centrales y barreras que obligan 
+    al robot a maniobrar, evitando líneas de visión directas y forzando la 
+    exploración activa.
+\end{itemize}
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[scale=0.25]{img/escena.png}
+    \caption{Escenario de simulación en CoppeliaSim}
+\end{figure}
+
+\subsection{Sensores}
+Con respecto a la práctica anterior, se han realizado ajustes específicos, como la 
+integración del sensor LIDAR Hokuyo.
+Además fue necesario realizar una modificación en las propiedades de los objetos de 
+la escena (muros y obstáculos estáticos) para asegurar su detección mediante 
+ultrasonidos.
+
+Se activó explícitamente el flag \textit{detectable} en las propiedades dinámicas 
+de los volúmenes de la escena. Sin este ajuste, el motor físico de CoppeliaSim no 
+generaba los rebotes necesarios para los sensores de rango 
+(\texttt{sensor\_msgs/Range}), lo que provocaba que el robot ``viese'' a través de 
+las paredes.
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[scale=0.25]{img/robot.png}
+    \caption{Modelo del robot Pioneer P3DX con sensores integrados, incluyendo el 
+    LIDAR Hokuyo y los sonares.}
+\end{figure}
+
+\section{Ejecución del sistema}
+
+\subsection{Despliegue con Docker}
+Para garantizar la reproducibilidad y evitar problemas de dependencias, se utiliza 
+Docker. Comandos básicos:
+
+\begin{lstlisting}[language=bash, caption=Comandos de Docker]
+# Construccion de la imagen
+docker compose build
+
+# Ejecucion en segundo plano
+docker compose up -d
+
+# Acceso al entorno de desarrollo
+docker compose exec servicio_ros bash
+\end{lstlisting}
+
+\subsection{Compilación y Ejecución}
+Dentro del contenedor, el flujo de trabajo es el estándar de ROS 2:
+
+\begin{lstlisting}[language=bash, caption=Compilación y Ejecución]
+# Compilacion
+colcon build --symlink-install
+source install/setup.bash
+
+# Lanzamiento del sistema completo
+ros2 launch entrega_mapas_package sistema_completo.launch.py
+\end{lstlisting}
+
+\subsection{Interfaces de Comunicación (Topics)}
+El contrato de comunicación del sistema se define en la Tabla \ref{tab:topics}.
+
+\begin{table}[h]
+    \centering
+    \begin{tabular}{@{}lll@{}}
+    \toprule
+    \textbf{Topic} & \textbf{Tipo de Mensaje} & \textbf{Descripción} \\ \midrule
+    \texttt{/cmd\_vel} & \texttt{geometry\_msgs/Twist} & Comando de velocidad al robot. \\
+    \texttt{/scan} & \texttt{sensor\_msgs/LaserScan} & Datos del LIDAR (Input SLAM). \\
+    \texttt{/map} & \texttt{nav\_msgs/OccupancyGrid} & Mapa generado por SLAM. \\
+    \texttt{/robot/sonar\_*} & \texttt{sensor\_msgs/Range} & Lecturas de ultrasonidos. \\
+    \texttt{/goal} & \texttt{geometry\_msgs/PoseStamped} & Meta actual de exploración. \\ \bottomrule
+    \end{tabular}
+    \caption{Topics principales del sistema}
+    \label{tab:topics}
+\end{table}
+
+\section{Generación del mapa}
+
+\subsection{Proceso de mapeado}
+Durante la ejecución, el nodo \texttt{async\_slam\_toolbox\_node} fusiona la información de odometría con las lecturas del láser para expandir el mapa y corregir la deriva, mientras el robot recorre el entorno guiado por el algoritmo Bug2.
+
+\subsection{Guardado del mapa}
+Una vez completada la exploración, se ha utilizado \texttt{nav2\_map\_server} para exportar el resultado. Es crucial configurar la QoS correctamente (\texttt{transient\_local}) si el topic no es volátil:
+
+\begin{lstlisting}[language=bash]
+ros2 run nav2_map_server map_saver_cli -f /ros2_ws/maps/mapa_practica --ros-args -p map_subscribe_transient_local:=true
+\end{lstlisting}
+
+Esto genera los archivos \texttt{mapa\_practica.pgm} y \texttt{mapa\_practica.yaml} adjuntos en la entrega.
+
+\section{Resultado}
+
+El resultado principal de la práctica es el mapa de ocupación generado tras la exploración completa del escenario. A continuación se presenta el mapa final obtenido y se analiza su fidelidad respecto al entorno de simulación original.
+
+\subsection{Mapa de ocupación}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.9\textwidth]{img/resultado.jpeg}
+    \caption{Comparativa: Mapa de ocupación generado por SLAM Toolbox (Izquierda) frente al esquema del escenario en CoppeliaSim (Derecha).}
+    \label{fig:mapa_final}
+\end{figure}
+
+\subsection{Análisis}
+Al contrastar el mapa generado (Figura \ref{fig:mapa_final}) con el entorno real de CoppeliaSim, se observan los siguientes puntos clave:
+
+\begin{enumerate}
+    \item \textbf{Fidelidad geométrica:} 
+    Las paredes y esquinas presentan una rectitud notable, sin el efecto de 
+    ``doble muro'' o curvatura característico de los errores de deriva angular. 
+    Esto valida la eficacia de la interfaz de odometría  
+    implementada en el nodo \texttt{coppelia\_interface\_node}.
+    
+    \item \textbf{Consistencia topológica:} 
+    El algoritmo \texttt{slam\_toolbox} ha cerrado correctamente los bucles al 
+    revisitar zonas previamente exploradas (como el pasillo central). 
+    No se aprecian discontinuidades en el mapa, lo que indica que el módulo de 
+    \textit{Scan Matching} y la optimización del grafo han funcionado correctamente 
+    con los parámetros de resolución de 0.05 m.
+    
+    \item \textbf{Capacidad explorativa:} 
+    Gracias a la estrategia de generación de metas aleatorias del 
+    \texttt{goal\_manager} dentro de las cotas, se han mapeado 
+    incluso las zonas de sombra detrás de las columnas centrales, eliminando las áreas 
+    grises (espacio desconocido) dentro del perímetro operativo.
+\end{enumerate}
+
+\section{Análisis crítico}
+
+
+
+\section{Conclusiones}
+
+La realización de esta práctica ha permitido validar con éxito una arquitectura 
+robótica híbrida donde el desacoplamiento entre la simulación en CoppeliaSim y el 
+control contenerizado en Docker ha sido clave para la estabilidad del sistema. 
+Gracias a la implementación de una odometría basada en \textit{Ground Truth} y 
+su fusión con un algoritmo de \textit{Graph SLAM} (\texttt{slam\_toolbox}), se 
+ha logrado mitigar la deriva angular típica de la navegación, generando un mapa 
+de ocupación de alta fidelidad geométrica. 
+Asimismo, la robustez del controlador reactivo Bug2, ha garantizado una cobertura 
+completa del entorno sin atrapamientos en mínimos locales, entregando un mapa con 
+una resolución de 5 cm que satisface plenamente los requisitos operativos para las 
+futuras tareas de planificación de camino.
+
+\end{document}

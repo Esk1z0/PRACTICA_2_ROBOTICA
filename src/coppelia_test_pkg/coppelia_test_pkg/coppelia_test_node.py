@@ -2,10 +2,11 @@ import math
 import sys
 import numpy as np
 import random
+import time
 
 import rclpy
 from rclpy.node import Node
-from geometry_msgs.msg import TransformStamped, Quaternion
+from geometry_msgs.msg import TransformStamped, Quaternion, Point # Importamos Point explícitamente
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import LaserScan
 from tf2_ros import TransformBroadcaster
@@ -24,13 +25,11 @@ class PioneerP3dxNode(Node):
         
         # Conexión
         self.declare_parameter('coppelia_host', 'host.docker.internal')
-        self.declare_parameter('coppelia_port', 23000)
         host = self.get_parameter('coppelia_host').get_parameter_value().string_value
-        port = self.get_parameter('coppelia_port').get_parameter_value().integer_value
 
-        self.get_logger().info(f'Conectando a {host}:{port}...')
+        self.get_logger().info(f'Conectando a {host}...')
         try:
-            self._client = RemoteAPIClient(host, port)
+            self._client = RemoteAPIClient(host=host)
             self._sim = self._client.require('sim')
             self.get_logger().info('¡Conectado!')
         except Exception as e:
@@ -38,71 +37,69 @@ class PioneerP3dxNode(Node):
             sys.exit(1)
 
         # Handles
-        self._left_motor = self._sim.getObject('/Pioneer_p3dx_leftMotor')
-        self._right_motor = self._sim.getObject('/Pioneer_p3dx_rightMotor')
-        self._robot_handle = self._sim.getObject('/Pioneer_p3dx')
+        try:
+            self._robot_handle = self._sim.getObject('/PioneerP3DX')
+            self._left_motor = self._sim.getObject('/PioneerP3DX/leftMotor')
+            self._right_motor = self._sim.getObject('/PioneerP3DX/rightMotor')
+        except:
+            self.get_logger().error("No encuentro el robot '/PioneerP3DX'. Revisa la escena.")
+            sys.exit(1)
         
-        # Sonares (16 unidades)
-        self._sonar_handles = [self._sim.getObject(f'/Pioneer_p3dx_ultrasonicSensor{i}') for i in range(1, 17)]
+        # Sonares
+        self._sonar_handles = []
+        for i in range(16):
+            try:
+                h = self._sim.getObject(f'/PioneerP3DX/ultrasonicSensor[{i}]')
+                self._sonar_handles.append(h)
+            except:
+                try:
+                    h = self._sim.getObject(f'/PioneerP3DX/visible/ultrasonicSensor[{i}]')
+                    self._sonar_handles.append(h)
+                except:
+                    pass
+        
+        self.get_logger().info(f'Sonares encontrados: {len(self._sonar_handles)}/16')
 
         # Publishers
         self.odom_pub = self.create_publisher(Odometry, '/odom', 10)
         self.scan_pub = self.create_publisher(LaserScan, '/scan', 10)
         self.tf_broadcaster = TransformBroadcaster(self)
 
-        # Variables
+        # Variables control
         self.timer = self.create_timer(0.1, self.control_loop)
-        self.turn_timer = 0 # Contador para girar un rato si hay obstáculo
+        self.turn_timer = 0 
 
     def control_loop(self):
-        # --- 1. LECTURA DE SENSORES ---
-        # El Pioneer tiene 8 sonares frontales (1-8) y 8 traseros (9-16).
-        # Los índices en la lista son 0-7 (frente) y 8-15 (atrás).
-        # Los centrales frontales son los índices 3 y 4.
-        
+        # --- 1. LECTURA SENSORES ---
         min_dist_front = 999.0
-        
-        # Leemos solo los sensores frontales (índices 1 a 6 para tener un cono)
         for i in range(1, 7): 
-            res, dist, _, _, _ = self._sim.readProximitySensor(self._sonar_handles[i])
-            if res > 0:
-                if dist < min_dist_front:
-                    min_dist_front = dist
+            if i < len(self._sonar_handles):
+                res, dist, _, _, _ = self._sim.readProximitySensor(self._sonar_handles[i])
+                if res > 0:
+                    if dist < min_dist_front: min_dist_front = dist
 
-<<<<<<< HEAD
-        # --- 2. LÓGICA DE MOVIMIENTO (EXPLORACIÓN) ---
-        v_lin = 2.0  # Velocidad crucero alta
+        # --- 2. MOVIMIENTO ---
+        v_lin = 0.5 
         v_ang = 0.0
-=======
-        for s in self._sensors:
-            detection_state, _, detected_point, _, _ = self._sim.readProximitySensor(s)
->>>>>>> 9b58e0a7cee8acfbca1e80b698eef7e8ca2e239a
 
-        # Si estamos girando por un obstáculo anterior, seguimos girando un poco más
         if self.turn_timer > 0:
             v_lin = 0.0
-            v_ang = 1.0 # Girar derecha
+            v_ang = 0.5
             self.turn_timer -= 1
         else:
-            # Si detectamos algo muy cerca (menos de 0.5 metros)
             if min_dist_front < 0.5:
-                self.get_logger().info(f'¡OBSTÁCULO A {min_dist_front:.2f}m! INICIANDO GIRO.')
-                self.turn_timer = 15 # Girar durante 1.5 segundos (15 ciclos)
-                v_lin = 0.0
-                v_ang = 1.0
+                self.get_logger().info(f'¡OBSTÁCULO A {min_dist_front:.2f}m! GIRANDO.')
+                self.turn_timer = 20 
+                v_lin = -0.1
+                v_ang = 0.5
             else:
-                # Camino libre -> AVANZAR
-                v_lin = 2.0
-                v_ang = 0.0
-                # A veces girar un pelín aleatoriamente para no ir en línea recta perfecta
-                if random.random() < 0.05: 
-                    v_ang = random.uniform(-0.5, 0.5)
+                v_lin = 0.5
+                if random.random() < 0.1: v_ang = random.uniform(-0.3, 0.3)
 
-        # Enviar a motores
         self._sim.setJointTargetVelocity(self._left_motor, v_lin - v_ang)
         self._sim.setJointTargetVelocity(self._right_motor, v_lin + v_ang)
 
-        # --- 3. PUBLICAR ODOMETRÍA Y TF (NECESARIO PARA EL MAPA) ---
+        # --- 3. PUBLICAR ODOM & TF ---
         current_time = self.get_clock().now()
         pos = self._sim.getObjectPosition(self._robot_handle, -1)
         ori = self._sim.getObjectOrientation(self._robot_handle, -1)
@@ -112,23 +109,27 @@ class PioneerP3dxNode(Node):
         t.header.stamp = current_time.to_msg()
         t.header.frame_id = 'odom'
         t.child_frame_id = 'base_link'
-        t.transform.translation.x = pos[0]
-        t.transform.translation.y = pos[1]
+        t.transform.translation.x = float(pos[0])
+        t.transform.translation.y = float(pos[1])
         t.transform.translation.z = 0.0
         t.transform.rotation = quaternion_from_euler(0, 0, ori[2])
         self.tf_broadcaster.sendTransform(t)
 
-        # Odom
+        # Odom (AQUI ESTABA EL ERROR)
         odom = Odometry()
         odom.header.stamp = current_time.to_msg()
         odom.header.frame_id = 'odom'
         odom.child_frame_id = 'base_link'
-        odom.pose.pose.position.x = pos[0]
-        odom.pose.pose.position.y = pos[1]
+        
+        # CORRECCIÓN: Asignamos campo a campo para evitar error de tipos (Vector3 vs Point)
+        odom.pose.pose.position.x = t.transform.translation.x
+        odom.pose.pose.position.y = t.transform.translation.y
+        odom.pose.pose.position.z = t.transform.translation.z
+        
         odom.pose.pose.orientation = t.transform.rotation
         self.odom_pub.publish(odom)
 
-        # --- 4. PUBLICAR LÁSER VIRTUAL (SIMULADO) ---
+        # --- 4. PUBLICAR LÁSER ---
         scan = LaserScan()
         scan.header.stamp = current_time.to_msg()
         scan.header.frame_id = 'base_link'
@@ -142,9 +143,8 @@ class PioneerP3dxNode(Node):
         for i, s in enumerate(self._sonar_handles):
             res, dist, _, _, _ = self._sim.readProximitySensor(s)
             if res > 0:
-                idx = 15 - i
-                if 0 <= idx < 16:
-                    scan.ranges[idx] = dist
+                scan.ranges[15-i] = dist
+        
         self.scan_pub.publish(scan)
 
 def main(args=None):
