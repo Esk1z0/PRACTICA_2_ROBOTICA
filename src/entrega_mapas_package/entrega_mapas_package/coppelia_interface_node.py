@@ -44,6 +44,10 @@ class CoppeliaInterfaceNode(Node):
         self.declare_parameter('range_min', 0.05)
         self.declare_parameter('range_max', 5.0)
 
+        self.declare_parameter('wheel_separation', 0.33)  
+        self.declare_parameter('wheel_radius', 0.0975)    
+
+
         self.robot_name = self.get_parameter('robot_name').value
         self.update_rate = float(self.get_parameter('update_rate').value)
         self.max_speed = float(self.get_parameter('max_speed').value)
@@ -57,6 +61,9 @@ class CoppeliaInterfaceNode(Node):
         self.angle_max = float(self.get_parameter('angle_max').value)
         self.range_min = float(self.get_parameter('range_min').value)
         self.range_max = float(self.get_parameter('range_max').value)
+
+        self.wheel_separation = float(self.get_parameter('wheel_separation').value)
+        self.wheel_radius = float(self.get_parameter('wheel_radius').value)
 
         self.client = None
         self.sim = None
@@ -234,24 +241,25 @@ class CoppeliaInterfaceNode(Node):
         if self.sim is None:
             return
         try:
-            v = float(msg.linear.x)
-            w = float(msg.angular.z)
+            v = float(msg.linear.x)    # m/s (conceptual)
+            w = float(msg.angular.z)   # rad/s (conceptual)
 
-            left = max(-self.max_speed, min(self.max_speed, v - w))
-            right = max(-self.max_speed, min(self.max_speed, v + w))
+            # Parámetro REAL: separación entre ruedas (metros)
+            L = 0.40  # pon aquí tu wheel_separation real
+
+            v_left  = v - w * (L / 2.0)
+            v_right = v + w * (L / 2.0)
+
+            # Saturación final
+            left  = max(-self.max_speed, min(self.max_speed, v_left))
+            right = max(-self.max_speed, min(self.max_speed, v_right))
 
             self.sim.setJointTargetVelocity(self.left_motor, left)
             self.sim.setJointTargetVelocity(self.right_motor, right)
         except Exception as e:
             self.get_logger().warn(str(e))
 
-    def shutdown(self):
-        try:
-            if self.sim is not None:
-                self.sim.setJointTargetVelocity(self.left_motor, 0.0)
-                self.sim.setJointTargetVelocity(self.right_motor, 0.0)
-        except Exception:
-            pass
+
 
 
 def main(args=None):
