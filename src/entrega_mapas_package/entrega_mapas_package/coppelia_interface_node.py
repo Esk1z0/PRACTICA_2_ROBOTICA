@@ -92,7 +92,7 @@ class CoppeliaInterfaceNode(Node):
 
     def connect_to_coppelia(self):
         try:
-            self.client = RemoteAPIClient()
+            self.client = RemoteAPIClient(host='10.165.191.48', port=23000)
             self.sim = self.client.getObject('sim')
             self.robot_handle = self.sim.getObject(f'/{self.robot_name}')
             self.left_motor = self.sim.getObject(f'/{self.robot_name}_leftMotor')
