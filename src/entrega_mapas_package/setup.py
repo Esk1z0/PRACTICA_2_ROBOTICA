@@ -52,6 +52,9 @@ setup(
 
             # ros2 run entrega_mapas_package occupancy_mapper_node
             'occupancy_mapper_node = entrega_mapas_package.occupancy_mapper_node:main',
+
+            # ros2 run entrega_mapas_package a_star_node
+            'a_star_node = entrega_mapas_package.a_star_node:main',
         ],
     },
 )
