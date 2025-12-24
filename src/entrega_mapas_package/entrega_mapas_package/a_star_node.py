@@ -30,22 +30,58 @@ class AStarPlanner(Node):
             return None
 
     def heuristic(self, a, b):
-        """Manhattan distance heuristic."""
-        return abs(a[0] - b[0]) + abs(a[1] - b[1])
+        """Euclidean distance heuristic for Theta* (Any-angle)."""
+        return np.sqrt((a[0] - b[0])**2 + (a[1] - b[1])**2)
+
+    def euclidean_distance(self, a, b):
+        """Euclidean distance between two points."""
+        return np.sqrt((a[0] - b[0])**2 + (a[1] - b[1])**2)
+
+    def line_of_sight(self, start, end, grid):
+        """Bresenham's Line Algorithm to check visibility."""
+        x0, y0 = start
+        x1, y1 = end
+        
+        dx = abs(x1 - x0)
+        dy = abs(y1 - y0)
+        
+        sx = 1 if x0 < x1 else -1
+        sy = 1 if y0 < y1 else -1
+        
+        err = dx - dy
+        
+        while True:
+            if grid[x0, y0] == 1:
+                return False
+            
+            if x0 == x1 and y0 == y1:
+                break
+            
+            e2 = 2 * err
+            if e2 > -dy:
+                err -= dy
+                x0 += sx
+            if e2 < dx:
+                err += dx
+                y0 += sy
+        return True
 
     def get_neighbors(self, node, grid):
-        """Returns valid neighbors (up, down, left, right)."""
+        """Returns valid neighbors (8-connected) and move costs."""
         rows, cols = grid.shape
         r, c = node
-        candidates = [
-            (r - 1, c), (r + 1, c), 
-            (r, c - 1), (r, c + 1)
+        # (dr, dc, cost)
+        moves = [
+            (-1, 0, 1.0), (1, 0, 1.0), (0, -1, 1.0), (0, 1, 1.0), # Straight
+            (-1, -1, np.sqrt(2)), (-1, 1, np.sqrt(2)), 
+            (1, -1, np.sqrt(2)), (1, 1, np.sqrt(2)) # Diagonal
         ]
         valid_neighbors = []
-        for nr, nc in candidates:
+        for dr, dc, cost in moves:
+            nr, nc = r + dr, c + dc
             if 0 <= nr < rows and 0 <= nc < cols:
                 if grid[nr, nc] == 0: # 0 is free space
-                    valid_neighbors.append((nr, nc))
+                    valid_neighbors.append(((nr, nc), cost))
         return valid_neighbors
 
     def plan(self, grid, start, goal):
@@ -76,15 +112,30 @@ class AStarPlanner(Node):
             if current == goal:
                 return self.reconstruct_path(came_from, current)
 
-            for neighbor in self.get_neighbors(current, grid):
-                tentative_g_score = g_score[current] + 1 # Assuming cost 1 for neighbors
-                
-                if neighbor not in g_score or tentative_g_score < g_score[neighbor]:
-                    came_from[neighbor] = current
-                    g_score[neighbor] = tentative_g_score
-                    f = tentative_g_score + self.heuristic(neighbor, goal)
-                    f_score[neighbor] = f
-                    heapq.heappush(open_set, (f, neighbor))
+            # Theta* Logic
+            parent_node = came_from.get(current)
+
+            for neighbor, cost in self.get_neighbors(current, grid):
+                # Check for line of sight from parent to neighbor
+                if parent_node and self.line_of_sight(parent_node, neighbor, grid):
+                    # Path 2: parent -> neighbor
+                    new_g_score = g_score[parent_node] + self.euclidean_distance(parent_node, neighbor)
+                    if neighbor not in g_score or new_g_score < g_score[neighbor]:
+                        came_from[neighbor] = parent_node
+                        g_score[neighbor] = new_g_score
+                        f = new_g_score + self.heuristic(neighbor, goal)
+                        f_score[neighbor] = f
+                        heapq.heappush(open_set, (f, neighbor))
+                else:
+                    # Path 1: current -> neighbor (Standard A*)
+                    tentative_g_score = g_score[current] + cost
+                    
+                    if neighbor not in g_score or tentative_g_score < g_score[neighbor]:
+                        came_from[neighbor] = current
+                        g_score[neighbor] = tentative_g_score
+                        f = tentative_g_score + self.heuristic(neighbor, goal)
+                        f_score[neighbor] = f
+                        heapq.heappush(open_set, (f, neighbor))
         
         self.get_logger().warn("No path found!")
         return None
