@@ -55,6 +55,12 @@ setup(
 
             # ros2 run entrega_mapas_package a_star_node
             'a_star_node = entrega_mapas_package.a_star_node:main',
+
+            # ros2 run entrega_mapas_package dijkstra_node
+            'dijkstra_node = entrega_mapas_package.dijkstra_node:main',
+        
+            # ros2 run entrega_mapas_package rrt_node
+            'rrt_node = entrega_mapas_package.rrt_node:main',
         ],
     },
 )

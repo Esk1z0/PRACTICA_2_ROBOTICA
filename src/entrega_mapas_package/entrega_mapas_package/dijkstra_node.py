@@ -7,10 +7,10 @@ import heapq
 import os
 from PIL import Image
 
-class AStarPlanner(Node):
+class DijkstraPlanner(Node):
     def __init__(self):
-        super().__init__('a_star_node')
-        self.get_logger().info('A* Planner Initialized')
+        super().__init__('dijkstra_node')
+        self.get_logger().info('Dijkstra Planner Initialized')
 
     def load_map(self, map_path):
         """Loads a map image and converts it to a binary grid (0: free, 1: obstacle)."""
@@ -31,7 +31,7 @@ class AStarPlanner(Node):
 
     def heuristic(self, a, b):
         """Euclidean distance heuristic for Theta* (Any-angle)."""
-        return np.sqrt((a[0] - b[0])**2 + (a[1] - b[1])**2)
+        return 0.0
 
     def euclidean_distance(self, a, b):
         """Euclidean distance between two points."""
@@ -85,7 +85,7 @@ class AStarPlanner(Node):
         return valid_neighbors
 
     def plan(self, grid, start, goal):
-        """A* Algorithm implementation."""
+        """ Dijkstra Algorithm implementation."""
         rows, cols = grid.shape
         if not (0 <= start[0] < rows and 0 <= start[1] < cols):
             self.get_logger().error("Start point out of bounds")
@@ -151,7 +151,7 @@ class AStarPlanner(Node):
         path.reverse()
         return path
 
-    def plot_path(self, grid, path, start, goal, count, title="A* Path"):
+    def plot_path(self, grid, path, start, goal, count, title="Dijkstra Path"):
         plt.figure(figsize=(6, 6))
         plt.imshow(grid, cmap='Greys', origin='upper') # Display grid (0:White, 1:Black)
         
@@ -166,12 +166,12 @@ class AStarPlanner(Node):
         plt.scatter(start[1], start[0], color='green', s=100, marker='o', label='Start') # x=col, y=row
         plt.scatter(goal[1], goal[0], color='blue', s=100, marker='x', label='Goal')
 
-        plt.title(f"{title} (A*)\nNodes: {count}")
+        plt.title(f"{title} (Dijkstra)\nNodes: {count}")
         plt.legend()
         plt.grid(False) # Grid lines might be confusing on top of pixel grid
         
         # Save plot to a file instead of showing (good for docker/headless) 
-        output_file = os.path.join("maps", f"astar_result_{title.replace(' ', '_')}.png")
+        output_file = os.path.join("maps", f"dijkstra_result_{title.replace(' ', '_')}.png")
         plt.savefig(output_file)
         print(f"Plot saved to {os.path.abspath(output_file)}")
         # plt.show() 
@@ -219,7 +219,7 @@ def create_dummy_map(filename, size=(50, 50)):
 
 def main(args=None):
     rclpy.init(args=args)
-    planner = AStarPlanner()
+    planner = DijkstraPlanner()
 
     # Define scenarios
     scenarios = [
