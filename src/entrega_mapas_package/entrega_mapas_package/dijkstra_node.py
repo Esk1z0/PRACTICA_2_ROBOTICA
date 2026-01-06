@@ -224,7 +224,7 @@ def main(args=None):
     # Define scenarios
     scenarios = [
         # (Name, MapFilename, Start, Goal)
-        #("Scenario 1 Practice Map", "practica2.png", (150, 200), (350, 700)), # Dynamic goal based on size
+        ("Scenario 1 Practice Map", "practica2.png", (50, 100), (380, 630)),
         ("Scenario 2 Maze01", "Maze01.png", (15, 5), (80, 150)),
         ("Scenario 3 Maze02", "Maze02.png", (250, 250), (500, 250)),
         ("Scenario 4 Casa", "casa.png", (50, 100), (800, 1100)),

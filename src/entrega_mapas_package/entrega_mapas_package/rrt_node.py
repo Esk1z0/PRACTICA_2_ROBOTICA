@@ -227,6 +227,7 @@ def main(args=None):
     planner = RRTPlanner()
 
     scenarios = [
+        ("Scenario 1 Practice Map", "practica2.png", (50, 100), (380, 630)),
         ("Scenario 2 Maze01", "Maze01.png", (15, 5), (80, 150)),
         ("Scenario 3 Maze02", "Maze02.png", (250, 250), (500, 250)),
         ("Scenario 4 Casa", "casa.png", (50, 100), (800, 1100)),
