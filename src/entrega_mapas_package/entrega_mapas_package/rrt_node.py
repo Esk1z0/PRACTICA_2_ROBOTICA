@@ -229,7 +229,7 @@ def main(args=None):
     scenarios = [
         ("Scenario 1 Practice Map", "practica2.png", (50, 100), (380, 630)),
         ("Scenario 2 Maze01", "Maze01.png", (15, 5), (80, 150)),
-        ("Scenario 3 Maze02", "Maze02.png", (250, 250), (500, 250)),
+        ("Scenario 3 Maze02", "Maze02.png", (870, 410), (420, 420)),
         ("Scenario 4 Casa", "casa.png", (50, 100), (800, 1100)),
         ("Scenario 5 Prado", "prado.png", (50, 30), (100, 400))
     ]
@@ -249,7 +249,7 @@ def main(args=None):
              s = (max(0, min(start[0], rows-1)), max(0, min(start[1], cols-1)))
              g = (max(0, min(goal[0], rows-1)), max(0, min(goal[1], cols-1)))
              
-             path, tree, iters = planner.plan(grid, s, g, max_iter=50000, step_size=20)
+             path, tree, iters = planner.plan(grid, s, g, max_iter=100000, step_size=20)
              planner.plot_path(grid, path, tree, s, g, iters, title=name)
         else:
             planner.get_logger().error(f"Could not load map: {filename}")

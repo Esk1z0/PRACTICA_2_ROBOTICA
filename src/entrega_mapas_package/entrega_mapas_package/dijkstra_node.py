@@ -226,7 +226,7 @@ def main(args=None):
         # (Name, MapFilename, Start, Goal)
         ("Scenario 1 Practice Map", "practica2.png", (50, 100), (380, 630)),
         ("Scenario 2 Maze01", "Maze01.png", (15, 5), (80, 150)),
-        ("Scenario 3 Maze02", "Maze02.png", (250, 250), (500, 250)),
+        ("Scenario 3 Maze02", "Maze02.png", (870, 410), (420, 420)),
         ("Scenario 4 Casa", "casa.png", (50, 100), (800, 1100)),
         ("Scenario 5 Prado", "prado.png", (50, 30), (100, 400))
     ]
